@@ -3,7 +3,7 @@
     <fullName>Available_sick_leaves__c</fullName>
     <description>It shows how many avaiable sick leaves are there</description>
     <externalId>false</externalId>
-    <formula>Booked_sick_leaves__c</formula>
+    <formula>$Setup.Leave_Balance__c.Sick_Leave__c - Booked_sick_leaves__c</formula>
     <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
     <label>Available sick leaves</label>
     <precision>18</precision>

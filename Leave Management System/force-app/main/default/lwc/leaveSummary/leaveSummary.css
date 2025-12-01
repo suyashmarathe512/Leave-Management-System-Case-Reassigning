@@ -1,0 +1,59 @@
+.lm-card {
+    margin-bottom: 1rem;
+}
+
+/* Top balances row */
+.balance-row {
+    background-color: #f4f6f9;
+    border-radius: 0 0 4px 4px;
+}
+
+.balance-card {
+    padding: 0.25rem;
+}
+
+.balance-card-inner {
+    background: #ffffff;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.icon-wrapper {
+    margin-right: 0.75rem;
+}
+
+.balance-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.balance-label {
+    font-size: 0.85rem;
+    color: #54698d;
+    margin-bottom: 0.25rem;
+}
+
+.balance-value {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.balance-number {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #16325c;
+}
+
+.balance-unit {
+    font-size: 0.75rem;
+    color: #8898aa;
+}
+
+/* Table container for better responsiveness */
+.table-container {
+    overflow-x: auto;
+}

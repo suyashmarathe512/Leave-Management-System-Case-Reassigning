@@ -3,7 +3,7 @@
     <fullName>Available_earned_leaves__c</fullName>
     <description>Shows how many leaves are available</description>
     <externalId>false</externalId>
-    <formula>Booked_Earned_Leaves__c</formula>
+    <formula>$Setup.Leave_Balance__c.Earned_Leave__c - Booked_Earned_Leaves__c</formula>
     <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
     <label>Available earned leaves</label>
     <precision>18</precision>

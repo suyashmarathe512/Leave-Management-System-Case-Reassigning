@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
-    <customSettingsType>List</customSettingsType>
-    <description>It stores the leave balances for the Users.</description>
+    <customSettingsType>Hierarchy</customSettingsType>
+    <description>It stores the leave balance of  a year.</description>
     <enableFeeds>false</enableFeeds>
     <label>Leave Balance</label>
     <visibility>Public</visibility>

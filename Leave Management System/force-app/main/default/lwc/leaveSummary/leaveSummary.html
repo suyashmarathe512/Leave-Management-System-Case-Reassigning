@@ -1,0 +1,57 @@
+<template>
+    <!-- My Leave Balances bar -->
+    <lightning-card title="My Leave Balances" class="lm-card">
+        <div class="slds-p-around_medium slds-grid slds-wrap balance-row">
+            <!-- Earned Leave card -->
+            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-3 balance-card">
+                <div class="balance-card-inner">
+                    <div class="icon-wrapper">
+                        <lightning-icon icon-name="utility:vacation" size="small"></lightning-icon>
+                    </div>
+                    <div class="balance-text">
+                        <div class="balance-label">Earned Leave</div>
+                        <div class="balance-value">
+                            <span class="balance-number">{earned}</span>
+                            <span class="balance-unit">Days Available</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sick Leave card -->
+            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-3 balance-card">
+                <div class="balance-card-inner">
+                    <div class="icon-wrapper">
+                        <lightning-icon icon-name="utility:health" size="small"></lightning-icon>
+                    </div>
+                    <div class="balance-text">
+                        <div class="balance-label">Sick Leave</div>
+                        <div class="balance-value">
+                            <span class="balance-number">{sick}</span>
+                            <span class="balance-unit">Days Available</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </lightning-card>
+
+    <!-- Leave Requests table like the sample app -->
+    <lightning-card title="Leave Requests" class="lm-card">
+        <div slot="actions">
+            <!-- Apply Leave button on the right, like the + button in the screenshot -->
+            <lightning-button-icon
+                icon-name="utility:add"
+                alternative-text="Apply Leave"
+                variant="brand"
+                onclick={handleApplyLeave}>
+            </lightning-button-icon>
+        </div>
+        <lightning-datatable
+            key-field="Id"
+            data={leaves.data}
+            columns={columns}
+            hide-checkbox-column>
+        </lightning-datatable>
+    </lightning-card>
+</template>
