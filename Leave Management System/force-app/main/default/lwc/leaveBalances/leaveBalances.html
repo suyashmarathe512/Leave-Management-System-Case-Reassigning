@@ -6,10 +6,11 @@
                 <div class="custom-card slds-box slds-theme_default">
                     <span class="slds-text-heading_small">Annual Leave</span>
                     <p class="slds-text-heading_large">
-                        <lightning-icon icon-name="utility:world" size="small" class="icon-align"></lightning-icon
-                        >{balance.annualLeaveHours}
+                        <lightning-icon icon-name="utility:world" size="small" class="icon-align"></lightning-icon>
+                        {earnedCasualHours}
                     </p>
                     <p>Hours Available</p>
+                    <p class="slds-text-body_small">Entitlement: {settingEarnedCasual}</p>
                 </div>
             </div>
             <!-- Sick Leave Card -->
@@ -17,14 +18,11 @@
                 <div class="custom-card slds-box slds-theme_default">
                     <span class="slds-text-heading_small">Sick Leave</span>
                     <p class="slds-text-heading_large">
-                        <lightning-icon
-                            icon-name="utility:leave_conference"
-                            size="small"
-                            class="icon-align"
-                        ></lightning-icon>
-                        {balance.sickLeaveHours}
+                        <lightning-icon icon-name="utility:leave_conference" size="small" class="icon-align"></lightning-icon>
+                        {sickHours}
                     </p>
                     <p>Hours Available</p>
+                    <p class="slds-text-body_small">Entitlement: {settingSick}</p>
                 </div>
             </div>
             <!-- Work From Anywhere -->

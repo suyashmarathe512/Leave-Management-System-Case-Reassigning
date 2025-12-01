@@ -1,7 +1,8 @@
 /**
  * This class provides functionality related to managing leave applications.
  * It includes methods for retrieving leave requests, calculating leave balances,
- * and handling different types of leaves such as annual, sick, and volunteer leaves.
+ * and handling different types of leaves such as annual and sick leaves.
+ * Updated to source entitlements from List Custom Setting Leave_Balance__c.
  */
 public with sharing class LeaveApplicationController {
     // Constants representing different types of leaves
@@ -12,6 +13,52 @@ public with sharing class LeaveApplicationController {
     public static final String UNPAID_LEAVE = 'Unpaid Leave';
     public static final String BEREAVEMENT_LEAVE = 'Bereavement Leave';
     public static final String APPROVED_STATUS = 'Approved';
+
+    /**
+     * DTO for List Custom Setting Leave_Balance__c
+     */
+    public class LeaveBalanceSettingDTO {
+        @AuraEnabled public Decimal earnedCasualLeave { get; set; }
+        @AuraEnabled public Decimal sickLeave { get; set; }
+        @AuraEnabled public String nameKey { get; set; }
+    }
+
+    /**
+     * Reads the org-level default row from List Custom Setting Leave_Balance__c.
+     * If multiple rows exist keyed by user/profile, adjust key as needed.
+     */
+    @AuraEnabled(cacheable=true)
+    public static LeaveBalanceSettingDTO getDefaultLeaveBalanceSetting() {
+        LeaveBalanceSettingDTO dto = new LeaveBalanceSettingDTO();
+        // Try a few common keys in order: current UserId, Profile Name, then 'Default'
+        leave_balance__c userRow = leave_balance__c.getValues(UserInfo.getUserId());
+        if (userRow == null) {
+            // Fallback to Profile Name
+            String profileName = [
+                SELECT Profile.Name
+                FROM User
+                WHERE Id = :UserInfo.getUserId()
+                WITH USER_MODE
+                LIMIT 1
+            ].Profile.Name;
+            userRow = leave_balance__c.getValues(profileName);
+        }
+        if (userRow == null) {
+            // Final fallback to a conventional 'Default' key
+            userRow = leave_balance__c.getValues('Default');
+        }
+        if (userRow == null) {
+            // If still null, initialize zeros
+            dto.earnedCasualLeave = 0;
+            dto.sickLeave = 0;
+            dto.nameKey = 'N/A';
+            return dto;
+        }
+        dto.earnedCasualLeave = userRow.Earned_Casual_Leave__c;
+        dto.sickLeave = userRow.Sick_Leave__c;
+        dto.nameKey = userRow.Name;
+        return dto;
+    }
 
     /**
      * Retrieves the current user's leave requests from the Leave_Request__c object.
@@ -77,7 +124,7 @@ public with sharing class LeaveApplicationController {
     public static LeaveBalance getLeaveBalance() {
         LeaveBalance balance = new LeaveBalance();
         try {
-            // Load leave entitlements and deduct approved leaves from the balance
+            // Load leave entitlements from List Custom Setting and deduct approved leaves from the balance
             balance.loadLeaveEntitlement();
             for (Leave_Request__c request : getMyLeaves()) {
                 balance.deductApprovedLeaveHours(request);
@@ -109,14 +156,17 @@ public with sharing class LeaveApplicationController {
          * Loads leave entitlements from a custom setting or object.
          */
         public void loadLeaveEntitlement() {
-            Leave_Entitlements__c leaveEntitlement = Leave_Entitlements__c.getInstance();
-            // Assign leave entitlements from custom settings
-            annualLeaveHours = leaveEntitlement.Annual_Leave__c;
-            sickLeaveHours = leaveEntitlement.Sick_Leave__c;
-            workFromAnywhere = leaveEntitlement.Work_From_Anywhere__c;
-            volunteerLeave = leaveEntitlement.Volunteer_Leave__c;
+            // Read from List Custom Setting Leave_Balance__c with key resolution
+            LeaveBalanceSettingDTO setting = LeaveApplicationController.getDefaultLeaveBalanceSetting();
+            // Map available custom setting fields to the controller balance model
+            // Earned Casual + Sick are hour entitlements; others remain as before unless added to the setting
+            annualLeaveHours = setting.earnedCasualLeave;
+            sickLeaveHours = setting.sickLeave;
+            // Keep existing categories if not present in the custom setting
+            workFromAnywhere = 0;
+            volunteerLeave = 0;
             unpaidLeave = 0; // No entitlement value for unpaid leave
-            bereavementLeave = leaveEntitlement.Bereavement_Leave__c;
+            bereavementLeave = 0;
         }
 
         /**
