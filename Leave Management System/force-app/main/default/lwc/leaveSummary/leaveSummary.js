@@ -4,36 +4,29 @@ import getLeaveBalances from '@salesforce/apex/LeaveController.getLeaveBalances'
 import getMyLeaves from '@salesforce/apex/LeaveController.getMyLeaves';
 
 const COLUMNS = [
-    { label: 'Request Id', fieldName: 'Name' },
     {
         label: 'Start Date',
         fieldName: 'Start_Date__c',
         type: 'date',
         typeAttributes: { year: 'numeric', month: '2-digit', day: '2-digit' }
     },
-    {
-        label: 'End Date',
-        fieldName: 'End_Date__c',
-        type: 'date',
-        typeAttributes: { year: 'numeric', month: '2-digit', day: '2-digit' }
-    },
     { label: 'Leave Type', fieldName: 'Leave_Type__c' },
-    { label: 'Status', fieldName: 'Status__c' },
     { label: 'Reason', fieldName: 'Reason_To_Leave__c' },
     { label: 'Days Taken', fieldName: 'Days_Taken__c', type: 'number' },
-    { label: 'Available Earned', fieldName: 'Available_earned_leaves__c', type: 'number' },
-    { label: 'Available Sick', fieldName: 'Available_sick_leaves__c', type: 'number' },
-    { label: 'Booked Earned', fieldName: 'Booked_Earned_Leaves__c', type: 'number' },
-    { label: 'Booked Sick', fieldName: 'Booked_sick_leaves__c', type: 'number' },
-    { label: 'Booked Unpaid', fieldName: 'Booked_unpaid_leave__c', type: 'number' }
+    { label: 'Status', fieldName: 'Status__c' }
 ];
 
-export default class LeaveManagementApp extends NavigationMixin(LightningElement) {
+export default class leaveSummary extends NavigationMixin(LightningElement) {
     columns = COLUMNS;
 
     // balances
     earned = 0;
     sick = 0;
+    bookedEarned = 0;
+    bookedSick = 0;
+    bookedUnpaid = 0;
+    availableEarned = 0;
+    availableSick = 0;
 
     // wire leave balances
     @wire(getLeaveBalances)
@@ -41,6 +34,11 @@ export default class LeaveManagementApp extends NavigationMixin(LightningElement
         if (data) {
             this.earned = data.earned || 0;
             this.sick = data.sick || 0;
+            this.bookedEarned = data.bookedEarned || 0;
+            this.bookedSick = data.bookedSick || 0;
+            this.bookedUnpaid = data.bookedUnpaid || 0;
+            this.availableEarned = data.availableEarned || 0;
+            this.availableSick = data.availableSick || 0;
         } else if (error) {
             // Keep UI simple; if needed, add toast
             console.error('Error loading balances', error);

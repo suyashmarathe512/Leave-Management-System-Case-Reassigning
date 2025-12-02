@@ -57,3 +57,17 @@
 .table-container {
     overflow-x: auto;
 }
+
+/* Responsive adjustments for four cards */
+@media (max-width: 768px) {
+    .slds-col.slds-size_1-of-2.slds-large-size_1-of-4 {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .slds-col.slds-size_1-of-2.slds-large-size_1-of-4 {
+        width: 25%;
+    }
+}
