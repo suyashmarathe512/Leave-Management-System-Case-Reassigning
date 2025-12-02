@@ -13,25 +13,36 @@ public with sharing class LeaveController {
     // 1) Get balances from hierarchical custom setting Leave_Balance__c
     @AuraEnabled(cacheable=true)
     public static LeaveBalanceDTO getLeaveBalances() {
-        Leave_Balance__c cs;
+       Leave_Balance__c cs;
+String uid = UserInfo.getUserId();
+System.debug('Current User Id: ' + uid);
 
-        // Try user-level instance first, then org default
-        cs = Leave_Balance__c.getInstance(UserInfo.getUserId());
-        if (cs == null) {
-            cs = Leave_Balance__c.getInstance();
-        }
+// Try user-level instance first
+cs = Leave_Balance__c.getInstance(uid);
+System.debug('User Level Custom Setting: ' + cs);
 
-        LeaveBalanceDTO dto = new LeaveBalanceDTO();
-        dto.earned = (cs != null && cs.Earned_Leave__c != null) ? cs.Earned_Leave__c : 0;
-        dto.sick   = (cs != null && cs.Sick_Leave__c   != null) ? cs.Sick_Leave__c   : 0;
+if (cs == null) {
+    cs = Leave_Balance__c.getInstance();
+    System.debug('Org Level Custom Setting: ' + cs);
+}
+
+LeaveBalanceDTO dto = new LeaveBalanceDTO();
+dto.earned = (cs != null && cs.Earned_Leave__c != null) ? cs.Earned_Leave__c : 0;
+dto.sick   = (cs != null && cs.Sick_Leave__c   != null) ? cs.Sick_Leave__c   : 0;
+
+System.debug('DTO Values => Earned: ' + dto.earned + ', Sick: ' + dto.sick);
+
         
         // Calculate booked leaves from user's leave records
         List<Leave__c> userLeaves = [
-            SELECT Booked_Earned_Leaves__c, 
-                   Booked_Sick_Leaves__c, 
-                   Booked_unpaid_leaves__c
-            FROM Leave__c 
-            WHERE OwnerId = :UserInfo.getUserId()
+            SELECT 
+                Booked_Earned_Leaves__c, 
+                Booked_Sick_Leaves__c, 
+                Booked_unpaid_leaves__c
+            FROM 
+                Leave__c 
+            WHERE 
+                OwnerId = :UserInfo.getUserId()
         ];
         
         dto.bookedEarned = 0;
@@ -49,7 +60,6 @@ public with sharing class LeaveController {
                 dto.bookedUnpaid += leave.Booked_unpaid_leaves__c;
             }
         }
-        
         // Calculate available leaves by subtracting booked from total balance
         dto.availableEarned = dto.earned - dto.bookedEarned;
         dto.availableSick = dto.sick - dto.bookedSick;

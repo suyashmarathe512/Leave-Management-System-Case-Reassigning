@@ -16,7 +16,7 @@ const COLUMNS = [
     { label: 'Status', fieldName: 'Status__c' }
 ];
 
-export default class leaveSummary extends NavigationMixin(LightningElement) {
+export default class LeaveSummary extends NavigationMixin(LightningElement) {
     columns = COLUMNS;
 
     // balances
@@ -32,15 +32,15 @@ export default class leaveSummary extends NavigationMixin(LightningElement) {
     @wire(getLeaveBalances)
     wiredBalances({ error, data }) {
         if (data) {
-            this.earned = data.earned || 0;
-            this.sick = data.sick || 0;
-            this.bookedEarned = data.bookedEarned || 0;
-            this.bookedSick = data.bookedSick || 0;
-            this.bookedUnpaid = data.bookedUnpaid || 0;
-            this.availableEarned = data.availableEarned || 0;
-            this.availableSick = data.availableSick || 0;
+            console.log('getLeaveBalances data => ', JSON.stringify(data));
+            this.earned = data.earned ?? 0;
+            this.sick = data.sick ?? 0;
+            this.bookedEarned = data.bookedEarned ?? 0;
+            this.bookedSick = data.bookedSick ?? 0;
+            this.bookedUnpaid = data.bookedUnpaid ?? 0;
+            this.availableEarned = data.availableEarned ?? 0;
+            this.availableSick = data.availableSick ?? 0;
         } else if (error) {
-            // Keep UI simple; if needed, add toast
             console.error('Error loading balances', error);
         }
     }
@@ -55,7 +55,6 @@ export default class leaveSummary extends NavigationMixin(LightningElement) {
             : 'Error loading leave records';
     }
 
-    // Open standard New Leave__c record page (New Record Form)
     handleApplyLeave() {
         this[NavigationMixin.Navigate]({
             type: 'standard__objectPage',
