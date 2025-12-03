@@ -17,9 +17,6 @@ public with sharing class LeaveTriggerHandler{
                 ownerIds.add(leave.OwnerId);
             }
         }
-        if(ownerIds.isEmpty()){
-            return;
-        }
         Map<Id,Leave_Balance__c> balanceMap=new Map<Id,Leave_Balance__c>();
         List<Leave_Balance__c> balances=[
             SELECT 
@@ -109,33 +106,14 @@ public with sharing class LeaveTriggerHandler{
             if(leave.OwnerId!=null){
                 List<Leave__c> ownerLeaves=ownerToLeavesMap.get(leave.OwnerId);
                 Boolean isActiveLeave=(leave.Status__c!=null&&leave.Status__c=='Active');
-                if(Trigger.isInsert){
-                        if(isActiveLeave){
-                        if(ownerLeaves!=null){
-                            for(Leave__c existingLeave:ownerLeaves){
-                                if(existingLeave.Status__c!=null&&existingLeave.Status__c=='Active'){
-                                    leave.addError('Only one active leave record is allowed per employee.');
-                                    break;
-                                }
+                if(isActiveLeave){
+                    if(ownerLeaves!=null){
+                        for(Leave__c existingLeave:ownerLeaves){
+                            if(existingLeave.Status__c!=null&&existingLeave.Status__c=='Active'){
+                                leave.addError('Only one active leave record is allowed per employee.');
+                                break;
                             }
                         }
-                    }
-                }
-                if(Trigger.isUpdate){
-                        if(isActiveLeave){
-                            if(ownerLeaves!=null){
-                                Integer activeCount=0;
-                                for(Leave__c existingLeave:ownerLeaves){
-                                    if(existingLeave.Status__c!=null&&existingLeave.Status__c=='Active'){
-                                        if(existingLeave.Id!=leave.Id){
-                                            activeCount++;
-                                        }
-                                    }
-                                }
-                                if(activeCount > 0){
-                                    leave.addError('Only one active leave record is allowed per employee.');
-                                }
-                            }
                     }
                 }
                 if(leave.Start_Date__c!=null&&leave.End_Date__c!=null){

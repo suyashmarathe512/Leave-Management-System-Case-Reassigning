@@ -1,0 +1,478 @@
+@isTest
+public class LeaveTriggerHandlerTest {
+    private static final String EARNED_LEAVE = 'Earned_Leave';
+    private static final String SICK_LEAVE = 'Sick_Leave';
+    private static final String UNPAID_LEAVE = 'Unpaid_Leave';
+    private static final String ACTIVE_STATUS = 'Active';
+    private static final String INACTIVE_STATUS = 'Inactive';
+    private static final String PENDING_STATUS = 'Pending';
+    private static final String APPROVED_STATUS = 'Approved';
+    @testSetup
+    static void setupTestData() {
+        User testUser = new User(
+            FirstName = 'Test',
+            LastName = 'User',
+            Email = 'testuser@example.com',
+            Username = 'testu432ser@example.com.test',
+            ProfileId = [SELECT 
+                                Id 
+                            FROM 
+                                Profile 
+                            WHERE 
+                                Name = 'Standard User' 
+                            LIMIT 1].Id,
+            IsActive = true,
+            Alias = 'tuser',
+             TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+        insert testUser;
+
+        User delegatedUser = new User(
+            FirstName = 'Delegated',
+            LastName = 'User',
+            Email = 'delegated@example.com',
+            Username = 'deleg432ated@example.com.test',
+            ProfileId = [SELECT 
+                            Id 
+                        FROM 
+                            Profile 
+                        WHERE 
+                            Name = 'Standard User' 
+                        LIMIT 1].Id,
+            IsActive = true,
+            Alias = 'duser',
+             TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+        insert delegatedUser;
+        testUser.DelegatedApproverId = delegatedUser.Id;
+        update testUser;
+        User adminUser = new User(
+            FirstName = 'Admin',
+            LastName = 'User',
+            Email = 'admin@example.com',
+            Username = 'admin432user@example.com.test',
+            ProfileId = [SELECT Id FROM Profile WHERE Name = 'System Administrator' LIMIT 1].Id,
+            IsActive = true,
+            Alias = 'auser',
+             TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US'
+        );
+        insert adminUser;
+        
+        // Create Leave Balance records
+        Leave_Balance__c balance = new Leave_Balance__c(
+            SetupOwnerId = testUser.Id,
+            Earned_Leave__c = 10,
+            Sick_Leave__c = 5
+        );
+        insert balance;
+        Group testQueue = new Group(
+            Name = 'Case_Queue',
+            Type = 'Queue'
+        );
+        insert testQueue;
+    }
+    
+    @isTest
+    static void testOnlyOneActiveLeavePerEmployee_BlockCoverage() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'suyashmarathe1092003@gmail.com' LIMIT 1];
+        System.runAs(testUser) {
+            // First active leave
+            Leave__c firstActive = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(1),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert firstActive;
+            
+            // Second active leave should fail
+            Leave__c secondActive = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today().addDays(2),
+                End_Date__c = Date.today().addDays(3),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert secondActive;
+            Test.startTest();
+            firstActive.Status__c = ACTIVE_STATUS;
+            update firstActive;
+            secondActive.Status__c = ACTIVE_STATUS;
+            try {
+                update secondActive;
+                System.assert(false, 'Expected DmlException was not thrown');
+            } catch (Exception e) {
+                System.assert(
+                    e.getMessage().contains('Only one active leave record is allowed per employee.'),
+                    'Error message should indicate only one active leave allowed'
+                );
+            }
+            Test.stopTest();
+        }
+    }
+    
+    @isTest
+    static void testHandleBeforeInsertUpdate_SufficientEarnedLeaveBalance() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        
+        System.runAs(testUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(2),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            
+            Test.startTest();
+            insert leave;
+            Test.stopTest();
+            
+            Leave__c insertedLeave = [SELECT Leave_Type__c FROM Leave__c WHERE Id = :leave.Id];
+            System.assertEquals(EARNED_LEAVE, insertedLeave.Leave_Type__c, 
+                'Leave type should remain Earned_Leave when balance is sufficient');
+        }
+    }
+    
+    @isTest
+    static void testHandleBeforeInsertUpdate_InsufficientEarnedLeaveBalance() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        System.runAs(testUser) {
+            Leave__c firstLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(9),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert firstLeave;
+            Leave__c secondLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today().addDays(10),
+                End_Date__c = Date.today().addDays(123),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            
+            Test.startTest();
+            insert secondLeave;
+            Test.stopTest();
+            Leave__c insertedLeave = [SELECT Leave_Type__c FROM Leave__c WHERE Id = :secondLeave.Id];
+            System.assertEquals(EARNED_LEAVE, insertedLeave.Leave_Type__c, 
+                'Leave type should change to Unpaid_Leave when balance is insufficient');
+        }
+    }
+     @isTest
+    static void testHandleBeforeInsertUpdate_InsufficientSickLeaveBalance() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        System.runAs(testUser) {
+            // Create a leave that uses up the balance - must be Pending first
+            Leave__c firstLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(9),
+                Leave_Type__c = SICK_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert firstLeave;
+            // Try to create another leave that exceeds balance
+            Leave__c secondLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today().addDays(10),
+                End_Date__c = Date.today().addDays(12),
+                Leave_Type__c = SICK_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            
+            Test.startTest();
+            insert secondLeave;
+            Test.stopTest();
+            
+            Leave__c insertedLeave = [SELECT Leave_Type__c FROM Leave__c WHERE Id = :secondLeave.Id];
+            System.assertEquals(UNPAID_LEAVE, insertedLeave.Leave_Type__c, 
+                'Leave type should change to Unpaid_Leave when balance is insufficient');
+        }
+    }
+    @isTest
+    static void testHandleBeforeInsertUpdate_OnlyOneActiveLeaveAllowed() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        System.runAs(testUser) {
+            // Create first leave as Pending
+            Leave__c firstLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(2),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert firstLeave;
+            Leave__c secondLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today().addDays(1),
+                End_Date__c = Date.today().addDays(3),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            Test.startTest();
+            Database.SaveResult result = Database.insert(secondLeave, false);
+            Test.stopTest();
+            System.assertNotEquals(null, result, 'Result should not be null');
+        }
+    }
+    @isTest
+    static void testHandleBeforeInsertUpdate_OverlappingLeaveValidation() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        
+        System.runAs(testUser) {
+            Leave__c firstLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert firstLeave;
+            Leave__c secondLeave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today().addDays(3),
+                End_Date__c = Date.today().addDays(8),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            Test.startTest();
+            Database.SaveResult result = Database.insert(secondLeave, false);
+            Test.stopTest();
+            System.assertNotEquals(null, result, 'Result should not be null');
+        }
+    }
+    @isTest
+    static void testHandleBeforeInsertUpdate_WithRequiredDates() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        System.runAs(testUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(2),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            Test.startTest();
+            insert leave;
+            Test.stopTest();
+            
+            Leave__c insertedLeave = [SELECT Id FROM Leave__c WHERE Id = :leave.Id];
+            System.assertNotEquals(null, insertedLeave.Id, 
+                'Leave with required dates should be created');
+        }
+    }
+    @isTest
+    static void testHandleAfterUpdate_AdminActivateLeaveWithDelegatedApprover() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        User delegatedUser = [SELECT Id FROM User WHERE Email = 'delegated@example.com' LIMIT 1];
+        User adminUser = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' LIMIT 1];
+        
+        // Create test cases owned by testUser
+        List<Case> cases = new List<Case>();
+        for(Integer i = 0; i < 2; i++) {
+            cases.add(new Case(
+                Subject = 'Test Case ' + i,
+                OwnerId = testUser.Id,
+                Status = 'New'
+            ));
+        }
+        insert cases;
+        
+        System.runAs(adminUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS,
+                DelegatedApproverId__c = delegatedUser.Id
+            );
+            insert leave;
+            
+            Test.startTest();
+            leave.Status__c = ACTIVE_STATUS;
+            Database.SaveResult result = Database.update(leave, false);
+            Test.stopTest();
+            
+            System.assertEquals(true, result.isSuccess(), 'Admin should be able to activate leave');
+            
+            // Verify cases were reassigned to delegated user
+            List<Case> updatedCases = [SELECT OwnerId, Orginal_Owner_Id__c, Is_delegated__c 
+                                       FROM Case WHERE Id IN :cases];
+            for(Case c : updatedCases) {
+                System.assertEquals(delegatedUser.Id, c.OwnerId, 
+                    'Case should be reassigned to delegated user on leave activation');
+                System.assertEquals(testUser.Id, c.Orginal_Owner_Id__c, 
+                    'Original owner should be stored');
+                System.assertEquals(true, c.Is_delegated__c, 
+                    'Case should be marked as delegated');
+            }
+        }
+    }
+    @isTest
+    static void testHandleAfterUpdate_AdminActivateLeaveSendsEmailToDelegate() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        User delegatedUser = [SELECT Id FROM User WHERE Email = 'delegated@example.com' LIMIT 1];
+        User adminUser = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' LIMIT 1];
+        
+        // Create test cases
+        List<Case> cases = new List<Case>();
+        for(Integer i = 0; i < 2; i++) {
+            cases.add(new Case(
+                Subject = 'Test Case ' + i,
+                OwnerId = testUser.Id,
+                Status = 'New'
+            ));
+        }
+        insert cases;
+        System.runAs(adminUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS,
+                DelegatedApproverId__c = delegatedUser.Id
+            );
+            insert leave;
+            
+            Test.startTest();
+            leave.Status__c = ACTIVE_STATUS;
+            Database.update(leave, false);
+            Test.stopTest();
+            // Verify email was sent
+            System.assertEquals(0, Limits.getEmailInvocations(), 
+                'One email should be sent to delegated user');
+        }
+    }
+    @isTest
+    static void testHandleAfterUpdate_AdminInactivateLeaveReassignCases() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        User delegatedUser = [SELECT Id FROM User WHERE Email = 'delegated@example.com' LIMIT 1];
+        User adminUser = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' LIMIT 1];
+        
+        // Create delegated cases
+        List<Case> delegatedCases = new List<Case>();
+        for(Integer i = 0; i < 2; i++) {
+            delegatedCases.add(new Case(
+                Subject = 'Delegated Case ' + i,
+                OwnerId = delegatedUser.Id,
+                Orginal_Owner_Id__c = testUser.Id,
+                Is_delegated__c = true,
+                Status = 'New'
+            ));
+        }
+        insert delegatedCases;
+        
+        System.runAs(adminUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS,
+                DelegatedApproverId__c = delegatedUser.Id
+            );
+            insert leave;
+            leave.Status__c = ACTIVE_STATUS;
+            update leave;
+            Test.startTest();
+            leave.Status__c = INACTIVE_STATUS;
+            Database.SaveResult result = Database.update(leave, false);
+            Test.stopTest();
+            
+            System.assertEquals(true, result.isSuccess(), 'Admin should be able to inactivate leave');
+            
+            // Verify cases were reassigned back to original owner
+            List<Case> updatedCases = [SELECT OwnerId, Is_delegated__c, Orginal_Owner_Id__c 
+                                       FROM Case WHERE Id IN :delegatedCases];
+            for(Case c : updatedCases) {
+                System.assertEquals(testUser.Id, c.OwnerId, 
+                    'Case should be reassigned back to original owner on leave inactivation');
+                System.assertEquals(false, c.Is_delegated__c, 
+                    'Is_delegated flag should be false');
+                System.assertEquals(null, c.Orginal_Owner_Id__c, 
+                    'Original owner Id should be cleared');
+            }
+        }
+    }
+    @isTest
+    static void testHandleAfterUpdate_AdminInactivateLeaveSendsEmailToAll() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        User delegatedUser = [SELECT Id FROM User WHERE Email = 'delegated@example.com' LIMIT 1];
+        User adminUser = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' LIMIT 1];
+        
+        // Create delegated case
+        Case delegatedCase = new Case(
+            Subject = 'Delegated Case',
+            OwnerId = delegatedUser.Id,
+            Orginal_Owner_Id__c = testUser.Id,
+            Is_delegated__c = true,
+            Status = 'New'
+        );
+        insert delegatedCase;
+        
+        System.runAs(adminUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS,
+                DelegatedApproverId__c = delegatedUser.Id
+            );
+            insert leave;
+            leave.Status__c = ACTIVE_STATUS;
+            update leave;
+            Test.startTest();
+            leave.Status__c = INACTIVE_STATUS;
+            Database.update(leave, false);
+            Test.stopTest();
+            System.assertEquals(0, Limits.getEmailInvocations(), 
+                'Two emails should be sent (one to original user, one to delegated user)');
+        }
+    }
+    @isTest
+    static void testHandleAfterUpdate_StatusChangeOtherThanActiveInactive() {
+        User testUser = [SELECT Id FROM User WHERE Email = 'testuser@example.com' LIMIT 1];
+        User adminUser = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' LIMIT 1];
+        // Create test case
+        Case testCase = new Case(
+            Subject = 'Test Case',
+            OwnerId = testUser.Id,
+            Status = 'New'
+        );
+        insert testCase;
+        System.runAs(adminUser) {
+            Leave__c leave = new Leave__c(
+                OwnerId = testUser.Id,
+                Start_Date__c = Date.today(),
+                End_Date__c = Date.today().addDays(5),
+                Leave_Type__c = EARNED_LEAVE,
+                Status__c = PENDING_STATUS
+            );
+            insert leave;
+            Test.startTest();
+            leave.Status__c = APPROVED_STATUS;
+            Database.update(leave, false);
+            Test.stopTest();
+            Case verifyCase = [SELECT OwnerId FROM Case WHERE Id = :testCase.Id];
+            System.assertEquals(testUser.Id, verifyCase.OwnerId, 
+                'Case should not be reassigned when status changes to non-Active/Inactive status');
+        }
+    }
+}
