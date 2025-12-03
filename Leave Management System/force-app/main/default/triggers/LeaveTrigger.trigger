@@ -7,7 +7,12 @@ trigger LeaveTrigger on Leave__c (before insert, before update, after insert, af
             LeaveTriggerHandler.handleBeforeInsertUpdate(Trigger.new);
         }
     }
-    if(Trigger.isAfter && Trigger.isInsert) {
-        LeaveTriggerHandler.submitNewLeavesForApproval(Trigger.new);
+    if(Trigger.isAfter) {
+        if(Trigger.isInsert) {
+            LeaveTriggerHandler.submitNewLeavesForApproval(Trigger.new);
+        }
+        if(Trigger.isUpdate) {
+            LeaveTriggerHandler.handleAfterUpdate(Trigger.new, Trigger.oldMap);
+        }
     }
 }
