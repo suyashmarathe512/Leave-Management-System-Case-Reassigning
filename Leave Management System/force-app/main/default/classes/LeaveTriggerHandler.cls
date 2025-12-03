@@ -75,7 +75,7 @@ public with sharing class LeaveTriggerHandler{
                             if(numberOfDays > availableBalance){
                                 isBalanceSufficient=false;
                             }
-                        } else if(leave.Leave_Type__c=='Sick_Leave'){
+                        }else if(leave.Leave_Type__c=='Sick_Leave'){
                             availableBalance=balance.Sick_Leave__c-(sickBookedMap.containsKey(leave.OwnerId)?sickBookedMap.get(leave.OwnerId):0);
                             if(numberOfDays > availableBalance){
                                 isBalanceSufficient=false;
@@ -220,23 +220,53 @@ public with sharing class LeaveTriggerHandler{
             }
             List<Case> casesToUpdate=new List<Case>();
             Map<Id,List<Case>> delegatedToCasesMap=new Map<Id,List<Case>>();
+            List<Case> casesToAddToQueue=new List<Case>();
+            Set<Id> delegatedApproverIds = new Set<Id>();
+            for (Leave__c leave:activatedLeaves){
+                if (leave.DelegatedApproverId__c != null){
+                    delegatedApproverIds.add(leave.DelegatedApproverId__c);
+                }
+            }
+            Map<Id, User> existingDelegatedUsers = new Map<Id, User>([SELECT 
+                                                                            Id 
+                                                                    FROM 
+                                                                        User 
+                                                                    WHERE 
+                                                                        Id 
+                                                                    IN 
+                                                                        :delegatedApproverIds
+            ]);
+            
             for (Leave__c leave:activatedLeaves){
                 List<Case> userCases=ownerToCasesMap.get(leave.OwnerId);
-                if (userCases!=null&&leave.DelegatedApproverId__c!=null){
-                    for (Case c:userCases){
-                        c.OwnerId=leave.DelegatedApproverId__c;
-                        c.Orginal_Owner_Id__c=leave.OwnerId;
-                        c.Is_delegated__c=true;
-                        casesToUpdate.add(c);
-                        if (!delegatedToCasesMap.containsKey(leave.DelegatedApproverId__c)){
-                            delegatedToCasesMap.put(leave.DelegatedApproverId__c,new List<Case>());
+                if (userCases!=null && leave.DelegatedApproverId__c!=null){
+                    if (existingDelegatedUsers.containsKey(leave.DelegatedApproverId__c)){
+                        for (Case c:userCases){
+                            c.OwnerId=leave.DelegatedApproverId__c;
+                            c.Orginal_Owner_Id__c=leave.OwnerId;
+                            c.Is_delegated__c=true;
+                            casesToUpdate.add(c);
+                            if (!delegatedToCasesMap.containsKey(leave.DelegatedApproverId__c)){
+                                delegatedToCasesMap.put(leave.DelegatedApproverId__c,new List<Case>());
+                            }
+                            delegatedToCasesMap.get(leave.DelegatedApproverId__c).add(c);
                         }
-                        delegatedToCasesMap.get(leave.DelegatedApproverId__c).add(c);
+                    }else{
+                        for (Case c:userCases){
+                            casesToAddToQueue.add(c);
+                        }
                     }
                 }
             }
             if (!casesToUpdate.isEmpty()){
                 Database.update(casesToUpdate,false);
+            }
+            if (!casesToAddToQueue.isEmpty()){
+                Id caseQueueId = '03gdL000001dqpOQAQ';
+                for (Case c : casesToAddToQueue){
+                    c.OwnerId = caseQueueId;
+                }
+                Database.update(casesToAddToQueue, false);
             }
             List<Messaging.SingleEmailMessage> emails=new List<Messaging.SingleEmailMessage>();
             Set<Id> delegatedIds=delegatedToCasesMap.keySet();
