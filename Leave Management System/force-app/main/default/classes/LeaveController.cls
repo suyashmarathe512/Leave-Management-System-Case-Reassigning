@@ -1,6 +1,15 @@
-public with sharing class LeaveController {
-
-    public class LeaveBalanceDTO {
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @ClassName:        LeaveController
+ * @Description:      Apex controller for Leave Management LWC components
+ **********************************************************************************************************************/
+public with sharing class LeaveController{
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @ClassName:        LeaveBalanceDTO
+ * @Description:      Data Transfer Object to hold leave balance details
+ **********************************************************************************************************************/
+    public class LeaveBalanceDTO{
         @AuraEnabled public Decimal earned;
         @AuraEnabled public Decimal sick;
         @AuraEnabled public Decimal bookedEarned;
@@ -9,32 +18,23 @@ public with sharing class LeaveController {
         @AuraEnabled public Decimal availableEarned;
         @AuraEnabled public Decimal availableSick;
     }
-    
-    // 1) Get balances from hierarchical custom setting Leave_Balance__c
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @methodName:        getLeaveBalances
+ * @Description:     Get current user's leave balances from Leave_Balance__c custom setting
+ **********************************************************************************************************************/
     @AuraEnabled(cacheable=true)
-    public static LeaveBalanceDTO getLeaveBalances() {
+    public static LeaveBalanceDTO getLeaveBalances(){
        Leave_Balance__c cs;
-String uid = UserInfo.getUserId();
-System.debug('Current User Id: ' + uid);
-
-// Try user-level instance first
-cs = Leave_Balance__c.getInstance(uid);
-System.debug('User Level Custom Setting: ' + cs);
-
-if (cs == null) {
-    cs = Leave_Balance__c.getInstance();
-    System.debug('Org Level Custom Setting: ' + cs);
-}
-
-LeaveBalanceDTO dto = new LeaveBalanceDTO();
-dto.earned = (cs != null && cs.Earned_Leave__c != null) ? cs.Earned_Leave__c : 0;
-dto.sick   = (cs != null && cs.Sick_Leave__c   != null) ? cs.Sick_Leave__c   : 0;
-
-System.debug('DTO Values => Earned: ' + dto.earned + ', Sick: ' + dto.sick);
-
-        
-        // Calculate booked leaves from user's leave records
-        List<Leave__c> userLeaves = [
+        String uid=UserInfo.getUserId();
+        cs=Leave_Balance__c.getInstance(uid);
+        if (cs==null){
+            cs=Leave_Balance__c.getInstance();
+        }
+LeaveBalanceDTO dto=new LeaveBalanceDTO();
+dto.earned=(cs!=null && cs.Earned_Leave__c!=null)?cs.Earned_Leave__c:0;
+dto.sick  =(cs!=null && cs.Sick_Leave__c  !=null)?cs.Sick_Leave__c  :0;        
+        List<Leave__c> userLeaves=[
             SELECT 
                 Booked_Earned_Leaves__c, 
                 Booked_Sick_Leaves__c, 
@@ -42,35 +42,33 @@ System.debug('DTO Values => Earned: ' + dto.earned + ', Sick: ' + dto.sick);
             FROM 
                 Leave__c 
             WHERE 
-                OwnerId = :UserInfo.getUserId()
+                OwnerId=:UserInfo.getUserId()
         ];
-        
-        dto.bookedEarned = 0;
-        dto.bookedSick = 0;
-        dto.bookedUnpaid = 0;
-        
-        for(Leave__c leave : userLeaves) {
-            if(leave.Booked_Earned_Leaves__c != null) {
-                dto.bookedEarned += leave.Booked_Earned_Leaves__c;
+        dto.bookedEarned=0;
+        dto.bookedSick=0;
+        dto.bookedUnpaid=0;
+        for(Leave__c leave:userLeaves){
+            if(leave.Booked_Earned_Leaves__c!=null){
+                dto.bookedEarned+=leave.Booked_Earned_Leaves__c;
             }
-            if(leave.Booked_Sick_Leaves__c != null) {
-                dto.bookedSick += leave.Booked_Sick_Leaves__c;
+            if(leave.Booked_Sick_Leaves__c!=null){
+                dto.bookedSick+=leave.Booked_Sick_Leaves__c;
             }
-            if(leave.Booked_unpaid_leaves__c != null) {
-                dto.bookedUnpaid += leave.Booked_unpaid_leaves__c;
+            if(leave.Booked_unpaid_leaves__c!=null){
+                dto.bookedUnpaid+=leave.Booked_unpaid_leaves__c;
             }
         }
-        // Calculate available leaves by subtracting booked from total balance
-        dto.availableEarned = dto.earned - dto.bookedEarned;
-        dto.availableSick = dto.sick - dto.bookedSick;
-
+        dto.availableEarned=dto.earned-dto.bookedEarned;
+        dto.availableSick=dto.sick-dto.bookedSick;
         return dto;
     }
-
-    // 2) Get current user's Leave__c records for the table
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @methodName:        getMyLeaves
+ * @Description:     Get current user's leaves
+ *  **********************************************************************************************************************/
     @AuraEnabled(cacheable=true)
-    public static List<Leave__c> getMyLeaves() {
-        // Select all fields from Leave__c
+    public static List<Leave__c> getMyLeaves(){
         return [
             SELECT Id,
                    Name,
@@ -84,7 +82,7 @@ System.debug('DTO Values => Earned: ' + dto.earned + ', Sick: ' + dto.sick);
                    Booked_unpaid_leaves__c,
                    Days_Taken__c
             FROM Leave__c
-            WHERE OwnerId = :UserInfo.getUserId()
+            WHERE OwnerId=:UserInfo.getUserId()
             ORDER BY Start_Date__c DESC, CreatedDate DESC
         ];
     }
