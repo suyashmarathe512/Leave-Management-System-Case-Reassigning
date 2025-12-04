@@ -6,30 +6,6 @@
 public with sharing class LeaveTriggerHandler{
     /********************************************************************************************************************
      * @Author:          CRM Team Innovation
-     * @methodName:      populateDelegatedApprover
-     * @param:         newLeaves-List of Leave__c records before insert
-     * @Description:     Populate DelegatedApproverId__c from owner's DelegatedApproverId if not already set
-     **********************************************************************************************************************/
-    public static void populateDelegatedApprover(List<Leave__c> newLeaves){
-        Set<Id> ownerIds = new Set<Id>();
-        for(Leave__c leave : newLeaves){
-            if(leave.OwnerId != null){
-                ownerIds.add(leave.OwnerId);
-            }
-        }
-        Map<Id, Id> ownerToDelegated = new Map<Id, Id>();
-        List<User> users = [SELECT Id, DelegatedApproverId FROM User WHERE Id IN :ownerIds];
-        for(User u : users){
-            ownerToDelegated.put(u.Id, u.DelegatedApproverId);
-        }
-        for(Leave__c leave : newLeaves){
-            if(leave.DelegatedApproverId__c == null && leave.OwnerId != null){
-                leave.DelegatedApproverId__c = ownerToDelegated.get(leave.OwnerId);
-            }
-        }
-    }
-    /********************************************************************************************************************
-     * @Author:          CRM Team Innovation
      * @methodName:      handleBeforeInsertUpdate
      * @param:         newLeaves-List of Leave__c records before insert/update
      * @Description:     Validate leave applications and adjust leave types based on balances before insert/update
@@ -56,23 +32,40 @@ public with sharing class LeaveTriggerHandler{
         }
         Map<Id,Decimal> earnedBookedMap=new Map<Id,Decimal>();
         Map<Id,Decimal> sickBookedMap=new Map<Id,Decimal>();
-        List<AggregateResult> bookedLeaves=[
+        List<AggregateResult> earndBookedLeaves=[
             SELECT 
                 OwnerId,
-                SUM(Booked_Earned_Leaves__c) earnedSum,
-                SUM(Booked_Sick_Leaves__c) sickSum
+                SUM(Days_Taken__c) earnedSum
             FROM 
                 Leave__c 
             WHERE 
-                OwnerId IN :ownerIds
+                OwnerId 
+            IN 
+                :ownerIds 
+            AND 
+                Leave_Type__c = 'Earned_Leave'
             GROUP BY 
                 OwnerId
         ];
-        for(AggregateResult ar:bookedLeaves){
+        for(AggregateResult ar:earndBookedLeaves){
             Id ownerId=(Id)ar.get('OwnerId');
             Decimal earnedSum=(Decimal)ar.get('earnedSum');
-            Decimal sickSum=(Decimal)ar.get('sickSum');
             earnedBookedMap.put(ownerId,earnedSum!=null?earnedSum:0);
+        }
+        List<AggregateResult> sickBookedLeaves=[
+            SELECT 
+                OwnerId,
+                SUM(Days_Taken__c) sickSum
+            FROM 
+                Leave__c 
+            WHERE 
+                OwnerId IN :ownerIds AND Leave_Type__c = 'Sick_Leave'
+            GROUP BY 
+                OwnerId
+        ];
+        for(AggregateResult ar:sickBookedLeaves){
+            Id ownerId=(Id)ar.get('OwnerId');
+            Decimal sickSum=(Decimal)ar.get('sickSum');
             sickBookedMap.put(ownerId,sickSum!=null?sickSum:0);
         }
         for (Id oid:ownerIds){
@@ -88,25 +81,22 @@ public with sharing class LeaveTriggerHandler{
                 Integer numberOfDays=leave.End_Date__c.daysBetween(leave.Start_Date__c) + 1;
                 if(leave.Leave_Type__c=='Earned_Leave'||leave.Leave_Type__c=='Sick_Leave'){
                     Leave_Balance__c balance=balanceMap.get(leave.OwnerId);
-                    Boolean isBalanceSufficient=true;
                     if(balance!=null){  
                         Decimal availableBalance=0;
                         if(leave.Leave_Type__c=='Earned_Leave'){
                             availableBalance=balance.Earned_Leave__c-(earnedBookedMap.containsKey(leave.OwnerId)?earnedBookedMap.get(leave.OwnerId):0);
                             if(numberOfDays > availableBalance){
-                                isBalanceSufficient=false;
+                                leave.addError('Insufficient Earned Leave balance. Available balance: ' + availableBalance + ' days.');
                             }
                         }else if(leave.Leave_Type__c=='Sick_Leave'){
                             availableBalance=balance.Sick_Leave__c-(sickBookedMap.containsKey(leave.OwnerId)?sickBookedMap.get(leave.OwnerId):0);
                             if(numberOfDays > availableBalance){
-                                isBalanceSufficient=false;
+                                leave.addError('Insufficient Sick Leave balance. Available balance: ' + availableBalance + ' days.');
                             }
                         }
                     }else{
-                        isBalanceSufficient=false;
-                    }
-                    if(!isBalanceSufficient){
-                        leave.Leave_Type__c='Unpaid_Leave';
+                        leave.addError('Leave balance record not found for the employee.');
+                        continue;
                     }
                 }
             }
@@ -224,11 +214,6 @@ public with sharing class LeaveTriggerHandler{
             Map<Id,List<Case>> delegatedToCasesMap=new Map<Id,List<Case>>();
             List<Case> casesToAddToQueue=new List<Case>();
             Set<Id> delegatedApproverIds = new Set<Id>();
-            for (Leave__c leave:activatedLeaves){
-                if (leave.DelegatedApproverId__c != null){
-                    delegatedApproverIds.add(leave.DelegatedApproverId__c);
-                }
-            }
             Map<Id, User> existingDelegatedUsers = new Map<Id, User>([SELECT 
                                                                             Id 
                                                                     FROM 
@@ -236,22 +221,20 @@ public with sharing class LeaveTriggerHandler{
                                                                     WHERE 
                                                                         Id 
                                                                     IN 
-                                                                        :delegatedApproverIds
-            ]);
-            
+                                                                        :ownerIds]);
             for (Leave__c leave:activatedLeaves){
                 List<Case> userCases=ownerToCasesMap.get(leave.OwnerId);
-                if (userCases!=null && leave.DelegatedApproverId__c!=null){
-                    if (existingDelegatedUsers.containsKey(leave.DelegatedApproverId__c)){
+                if (userCases!=null){
+                    if (!existingDelegatedUsers.isEmpty()){
                         for (Case c:userCases){
-                            c.OwnerId=leave.DelegatedApproverId__c;
+                            c.OwnerId=existingDelegatedUsers.get(leave.OwnerId).Id;
                             c.Orginal_Owner_Id__c=leave.OwnerId;
                             c.Is_delegated__c=true;
                             casesToUpdate.add(c);
-                            if (!delegatedToCasesMap.containsKey(leave.DelegatedApproverId__c)){
-                                delegatedToCasesMap.put(leave.DelegatedApproverId__c,new List<Case>());
+                            if (!delegatedToCasesMap.containsKey(existingDelegatedUsers.get(leave.OwnerId).Id)){
+                                delegatedToCasesMap.put(existingDelegatedUsers.get(leave.OwnerId).Id,new List<Case>());
                             }
-                            delegatedToCasesMap.get(leave.DelegatedApproverId__c).add(c);
+                            delegatedToCasesMap.get(existingDelegatedUsers.get(leave.OwnerId).Id).add(c);
                         }
                     }else{
                         for (Case c:userCases){
@@ -372,12 +355,34 @@ public with sharing class LeaveTriggerHandler{
             }
             List<Messaging.SingleEmailMessage> emails=new List<Messaging.SingleEmailMessage>();
             Set<Id> allUserIds=new Set<Id>();
+            
+            // Collect all user IDs that need to be queried (owners and their delegated approvers)
             for (Leave__c leave:inactivatedLeaves){
                 allUserIds.add(leave.OwnerId);
-                if (leave.DelegatedApproverId__c!=null){
-                    allUserIds.add(leave.DelegatedApproverId__c);
+            }
+            // Query users to get DelegatedApproverId for all involved users
+            Map<Id,Id> originalOwnerToDelegatedApproverMap = new Map<Id,Id>();
+            List<User> usersWithDelegatedApprovers = [
+                SELECT 
+                    Id, DelegatedApproverId
+                FROM 
+                    User
+                WHERE 
+                    Id IN :allUserIds
+            ];
+            
+            for(User u : usersWithDelegatedApprovers) {
+                originalOwnerToDelegatedApproverMap.put(u.Id, u.DelegatedApproverId);
+            }
+            
+            // Add delegated approvers to the set of users to query
+            for (Leave__c leave:inactivatedLeaves){
+                Id delegatedApproverId = originalOwnerToDelegatedApproverMap.get(leave.OwnerId);
+                if (delegatedApproverId != null){
+                    allUserIds.add(delegatedApproverId);
                 }
             }
+            
             Map<Id,User> userMap=new Map<Id,User>([
                 SELECT 
                     Id,Email,Name
@@ -390,7 +395,8 @@ public with sharing class LeaveTriggerHandler{
 
             for (Leave__c leave:inactivatedLeaves){
                 User originalUser=userMap.get(leave.OwnerId);
-                User delegatedUser=userMap.get(leave.DelegatedApproverId__c);
+                Id delegatedApproverId = originalOwnerToDelegatedApproverMap.get(leave.OwnerId);
+                User delegatedUser = delegatedApproverId != null ? userMap.get(delegatedApproverId) : null;
                 List<Case> reassignedCases=originalToCasesMap.get(leave.OwnerId);
                 if (reassignedCases!=null&&!reassignedCases.isEmpty()){
                     if (originalUser!=null&&originalUser.Email!=null){
