@@ -6,6 +6,30 @@
 public with sharing class LeaveTriggerHandler{
     /********************************************************************************************************************
      * @Author:          CRM Team Innovation
+     * @methodName:      populateDelegatedApprover
+     * @param:         newLeaves-List of Leave__c records before insert
+     * @Description:     Populate DelegatedApproverId__c from owner's DelegatedApproverId if not already set
+     **********************************************************************************************************************/
+    public static void populateDelegatedApprover(List<Leave__c> newLeaves){
+        Set<Id> ownerIds = new Set<Id>();
+        for(Leave__c leave : newLeaves){
+            if(leave.OwnerId != null){
+                ownerIds.add(leave.OwnerId);
+            }
+        }
+        Map<Id, Id> ownerToDelegated = new Map<Id, Id>();
+        List<User> users = [SELECT Id, DelegatedApproverId FROM User WHERE Id IN :ownerIds];
+        for(User u : users){
+            ownerToDelegated.put(u.Id, u.DelegatedApproverId);
+        }
+        for(Leave__c leave : newLeaves){
+            if(leave.DelegatedApproverId__c == null && leave.OwnerId != null){
+                leave.DelegatedApproverId__c = ownerToDelegated.get(leave.OwnerId);
+            }
+        }
+    }
+    /********************************************************************************************************************
+     * @Author:          CRM Team Innovation
      * @methodName:      handleBeforeInsertUpdate
      * @param:         newLeaves-List of Leave__c records before insert/update
      * @Description:     Validate leave applications and adjust leave types based on balances before insert/update
@@ -183,7 +207,7 @@ public with sharing class LeaveTriggerHandler{
             }
             List<Case> openCases=[
                 SELECT
-                    Id,CaseNumber,OwnerId,Orginal_Owner_Id__c
+                    Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type
                 FROM
                     Case
                 WHERE
@@ -264,6 +288,10 @@ public with sharing class LeaveTriggerHandler{
                     String body='Dear ' + delegatedUser.Name + ',\n\nThe following cases have been reassigned to you as the delegated user for an employee on leave:\n\n';
                     for (Case c:reassignedCases){
                         body += 'Case Number: ' + c.CaseNumber + '\n';
+                        body += 'Subject: ' + c.Subject + '\n';
+                        body += 'Status: ' + c.Status + '\n';
+                        body += 'Priority: ' + c.Priority + '\n';
+                        body += 'Type: ' + c.Type + '\n\n';
                     }
                     body += '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
                     Messaging.SingleEmailMessage email=new Messaging.SingleEmailMessage();
@@ -306,7 +334,7 @@ public with sharing class LeaveTriggerHandler{
             }
             List<Case> delegatedCases=[
                 SELECT
-                    Id,CaseNumber,OwnerId,Orginal_Owner_Id__c
+                    Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type
                 FROM
                     Case
                 WHERE
@@ -370,6 +398,10 @@ public with sharing class LeaveTriggerHandler{
                         String body='Dear ' + originalUser.Name + ',\n\nYour leave has ended,and the following cases have been reassigned back to you:\n\n';
                         for (Case c:reassignedCases){
                             body += 'Case Number: ' + c.CaseNumber + '\n';
+                            body += 'Subject: ' + c.Subject + '\n';
+                            body += 'Status: ' + c.Status + '\n';
+                            body += 'Priority: ' + c.Priority + '\n';
+                            body += 'Type: ' + c.Type + '\n\n';
                         }
                         body += '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
                         Messaging.SingleEmailMessage email=new Messaging.SingleEmailMessage();
@@ -383,6 +415,10 @@ public with sharing class LeaveTriggerHandler{
                         String body='Dear ' + delegatedUser.Name + ',\n\nThe leave period has ended,and the following cases have been reassigned back to the original owner:\n\n';
                         for (Case c:reassignedCases){
                             body += 'Case Number: ' + c.CaseNumber + '\n';
+                            body += 'Subject: ' + c.Subject + '\n';
+                            body += 'Status: ' + c.Status + '\n';
+                            body += 'Priority: ' + c.Priority + '\n';
+                            body += 'Type: ' + c.Type + '\n\n';
                         }
                         body += '\nBest regards,\nLeave Management System';
                         Messaging.SingleEmailMessage email=new Messaging.SingleEmailMessage();

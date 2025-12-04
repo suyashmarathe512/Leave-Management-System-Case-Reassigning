@@ -28,9 +28,6 @@ public with sharing class LeaveController{
        Leave_Balance__c cs;
         String uid=UserInfo.getUserId();
         cs=Leave_Balance__c.getInstance(uid);
-        if (cs==null){
-            cs=Leave_Balance__c.getInstance();
-        }
 LeaveBalanceDTO dto=new LeaveBalanceDTO();
 dto.earned=(cs!=null && cs.Earned_Leave__c!=null)?cs.Earned_Leave__c:0;
 dto.sick  =(cs!=null && cs.Sick_Leave__c  !=null)?cs.Sick_Leave__c  :0;        

@@ -19,11 +19,7 @@ public with sharing class LeaveControllerTest {
     }
     @IsTest
     static void test_getLeaveBalances_userSpecific() {
-        // Insert Users (setup objects) via System.runAs of an existing user to avoid mixed DML with non-setup
-        // Approach: create setup objects first, then perform all non-setup DML in a separate transaction.
         Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
-
-        // 1) Setup DML only: Create User WITHOUT assigning a role to avoid Mixed DML with non-setup later
         User u = new User(
             FirstName = 'Leave',
             LastName  = 'ControllerTester',
@@ -47,31 +43,44 @@ public with sharing class LeaveControllerTest {
 
         System.runAs(u) {
             List<Leave__c> testUserLeaves = new List<Leave__c>();
-            for (Integer i = 0; i < 3; i++) {
-                Leave__c lv = new Leave__c();
-                lv.Start_Date__c = Date.today().addDays(i);
-                lv.End_Date__c   = Date.today().addDays(i + 3);
-                lv.Leave_Type__c = 'Earned_Leave';
-                lv.Status__c     = 'Pending';
-                lv.Reason_To_Leave__c = 'Test run ' + i;
-                testUserLeaves.add(lv);
-            }
+            Leave__c lv1 = new Leave__c();
+            lv1.Start_Date__c = Date.today();
+            lv1.End_Date__c   = Date.today().addDays(2);
+            lv1.Leave_Type__c = 'Earned_Leave';
+            lv1.Status__c     = 'Pending';
+            lv1.Reason_To_Leave__c = 'Test run 1';
+            testUserLeaves.add(lv1);
+            
+            Leave__c lv2 = new Leave__c();
+            lv2.Start_Date__c = Date.today().addDays(5);
+            lv2.End_Date__c   = Date.today().addDays(7);
+            lv2.Leave_Type__c = 'Earned_Leave';
+            lv2.Status__c     = 'Pending';
+            lv2.Reason_To_Leave__c = 'Test run 2';
+            testUserLeaves.add(lv2);
+            
+            Leave__c lv3 = new Leave__c();
+            lv3.Start_Date__c = Date.today().addDays(10);
+            lv3.End_Date__c   = Date.today().addDays(12);
+            lv3.Leave_Type__c = 'Sick_Leave';
+            lv3.Status__c     = 'Pending';
+            lv3.Reason_To_Leave__c = 'Test run 3';
+            testUserLeaves.add(lv3);
             insert testUserLeaves;
             LeaveController.LeaveBalanceDTO dto = LeaveController.getLeaveBalances();
             System.assertNotEquals(null, dto, 'DTO should not be null');
             System.assertEquals(20, dto.earned);
             System.assertEquals(8, dto.sick);
-            System.assertEquals(2, dto.bookedEarned);
-            System.assertEquals(1, dto.bookedSick);
-            System.assertEquals(0.5, dto.bookedUnpaid);
-            System.assertEquals(18, dto.availableEarned);
-            System.assertEquals(7, dto.availableSick);
+            System.assertEquals(6, dto.bookedEarned);
+            System.assertEquals(3, dto.bookedSick);
+            System.assertEquals(0, dto.bookedUnpaid);
+            System.assertEquals(14, dto.availableEarned);
+            System.assertEquals(5, dto.availableSick);
         }
         Test.stopTest();
     }
     @IsTest
     static void test_getMyLeaves_filtersByOwner() {
-        // Insert setup Users once here (NO roles assigned to avoid Mixed DML)
         Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
         User u = new User(
             FirstName = 'Owner',
@@ -98,34 +107,47 @@ public with sharing class LeaveControllerTest {
             ProfileId = p.Id
         );
         insert new List<User>{ u, other };
-
-        // Non-setup DML after: create records
         System.runAs(u) {
             List<Leave__c> mine = new List<Leave__c>();
-            for (Integer i = 1; i < 3; i++) {
-                Leave__c lv = new Leave__c(
-                    Start_Date__c = Date.today().addDays(i),
-                    End_Date__c = Date.today().addDays(i+2),
-                    Leave_Type__c = 'Earned_Leave',
-                    Status__c = 'Pending',
-                    Reason_To_Leave__c = 'Mine ' + i
-                );
-                mine.add(lv);
-            }
+             Leave__c lv1 = new Leave__c();
+            lv1.Start_Date__c = Date.today();
+            lv1.End_Date__c   = Date.today().addDays(2);
+            lv1.Leave_Type__c = 'Earned_Leave';
+            lv1.Status__c     = 'Pending';
+            lv1.Reason_To_Leave__c = 'Test run 1';
+            mine.add(lv1);
+            Leave__c lv2 = new Leave__c();
+            lv2.Start_Date__c = Date.today().addDays(5);
+            lv2.End_Date__c   = Date.today().addDays(7);
+            lv2.Leave_Type__c = 'Earned_Leave';
+            lv2.Status__c     = 'Pending';
+            lv2.Reason_To_Leave__c = 'Test run 2';
+            mine.add(lv2);
+            Leave__c lv3 = new Leave__c();
+            lv3.Start_Date__c = Date.today().addDays(10);
+            lv3.End_Date__c   = Date.today().addDays(12);
+            lv3.Leave_Type__c = 'Sick_Leave';
+            lv3.Status__c     = 'Pending';
+            lv3.Reason_To_Leave__c = 'Test run 3';
+            mine.add(lv3);
             insert mine;
         }
         System.runAs(other) {
             List<Leave__c> notMine = new List<Leave__c>();
-            for (Integer j = 1; j < 2; j++) {
-                Leave__c lv = new Leave__c(
-                    Start_Date__c = Date.today().addDays(j+8),
-                    End_Date__c = Date.today().addDays(j+11),
-                    Leave_Type__c = 'Sick_Leave',
-                    Status__c = 'Pending',
-                    Reason_To_Leave__c = 'Not mine ' + j
-                );
-                notMine.add(lv);
-            }
+             Leave__c lv2 = new Leave__c();
+            lv2.Start_Date__c = Date.today().addDays(5);
+            lv2.End_Date__c   = Date.today().addDays(7);
+            lv2.Leave_Type__c = 'Earned_Leave';
+            lv2.Status__c     = 'Pending';
+            lv2.Reason_To_Leave__c = 'Test run 2';
+            notMine.add(lv2);
+            Leave__c lv3 = new Leave__c();
+            lv3.Start_Date__c = Date.today().addDays(10);
+            lv3.End_Date__c   = Date.today().addDays(12);
+            lv3.Leave_Type__c = 'Sick_Leave';
+            lv3.Status__c     = 'Pending';
+            lv3.Reason_To_Leave__c = 'Test run 3';
+            notMine.add(lv3);
             insert notMine;
         }
         System.runAs(u) {
@@ -133,7 +155,7 @@ public with sharing class LeaveControllerTest {
             List<Leave__c> myLeaves = LeaveController.getMyLeaves();
             Test.stopTest();
             System.assertNotEquals(null, myLeaves, 'Result should not be null');
-            System.assertEquals(2, myLeaves.size(), 'Should return only leaves owned by running user');
+            System.assertEquals(3, myLeaves.size(), 'Should return only leaves owned by running user');
         }
     }
 }
