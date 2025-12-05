@@ -9,7 +9,6 @@
 public with sharing class LeaveControllerTest {
     @TestSetup
     static void setupData() {
-        // Seed only non-setup data here to avoid Mixed DML in test methods
         Leave_Balance__c orgDefault = new Leave_Balance__c(
             SetupOwnerId = UserInfo.getOrganizationId(),
             Earned_Leave__c = 10,
