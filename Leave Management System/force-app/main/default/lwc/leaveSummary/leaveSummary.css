@@ -68,6 +68,27 @@
 lightning-datatable{
     border-radius:0.25rem;
     overflow:hidden;
+    border: 1px solid #dddbda;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+lightning-datatable .slds-table_header-fixed_container .slds-table_header-fixed {
+    background-color: #f3f2f2;
+    border-bottom: 2px solid #dddbda;
+}
+lightning-datatable .slds-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+lightning-datatable .slds-table tbody tr {
+    border-bottom: 1px solid #e5e5e5;
+}
+lightning-datatable .slds-table th {
+    font-weight: 600;
+    color: #3e3e3c;
+    padding: 0.75rem;
+}
+lightning-datatable .slds-table td {
+    padding: 0.75rem;
+    color: #3e3e3c;
 }
 /* Simplified responsive design */
 @media (max-width:768px){
