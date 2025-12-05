@@ -76,25 +76,34 @@ public with sharing class LeaveTriggerHandler{
                 sickBookedMap.put(oid,0);
             }
         }
-        for(Leave__c leave:newLeaves){
-            if(leave.OwnerId!=null&&leave.Start_Date__c!=null&&leave.End_Date__c!=null){
-                Integer numberOfDays=leave.End_Date__c.daysBetween(leave.Start_Date__c) + 1;
-                if(leave.Leave_Type__c=='Earned_Leave'||leave.Leave_Type__c=='Sick_Leave'){
-                    Leave_Balance__c balance=balanceMap.get(leave.OwnerId);
-                    if(balance!=null){  
-                        Decimal availableBalance=0;
-                        if(leave.Leave_Type__c=='Earned_Leave'){
-                            availableBalance=balance.Earned_Leave__c-(earnedBookedMap.containsKey(leave.OwnerId)?earnedBookedMap.get(leave.OwnerId):0);
-                            if(numberOfDays > availableBalance){
-                                leave.addError('Insufficient Earned Leave balance. Available balance: ' + availableBalance + ' days.');
+        for (Leave__c leave : newLeaves) {
+            if (leave.OwnerId != null && leave.Start_Date__c != null && leave.End_Date__c != null) {
+                Integer numberOfDays = leave.Start_Date__c.daysBetween(leave.End_Date__c) + 1;
+                if (numberOfDays <= 0) {
+                    leave.addError('Invalid date range. End Date must be on or after Start Date.');
+                    continue;
+                }
+                if (leave.Leave_Type__c == 'Earned_Leave' || leave.Leave_Type__c == 'Sick_Leave') {
+                    Leave_Balance__c balance = balanceMap.get(leave.OwnerId);
+                    if (balance != null) {
+                        Decimal bookedEarned = earnedBookedMap.containsKey(leave.OwnerId) ? earnedBookedMap.get(leave.OwnerId) : 0;
+                        Decimal bookedSick = sickBookedMap.containsKey(leave.OwnerId) ? sickBookedMap.get(leave.OwnerId) : 0;
+                        Decimal earnedTotal = balance.Earned_Leave__c != null ? balance.Earned_Leave__c : 0;
+                        Decimal sickTotal = balance.Sick_Leave__c != null ? balance.Sick_Leave__c : 0;
+                        if (leave.Leave_Type__c == 'Earned_Leave') {
+                            Decimal availableBalance = earnedTotal - bookedEarned;
+                            if (availableBalance < 0) availableBalance = 0;
+                            if (numberOfDays > availableBalance) {
+                                leave.addError('Please Apply for Unpaid Leave becuase Insufficient Earned Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
                             }
-                        }else if(leave.Leave_Type__c=='Sick_Leave'){
-                            availableBalance=balance.Sick_Leave__c-(sickBookedMap.containsKey(leave.OwnerId)?sickBookedMap.get(leave.OwnerId):0);
-                            if(numberOfDays > availableBalance){
-                                leave.addError('Insufficient Sick Leave balance. Available balance: ' + availableBalance + ' days.');
+                        } else if (leave.Leave_Type__c == 'Sick_Leave') {
+                            Decimal availableBalance = sickTotal - bookedSick;
+                            if (availableBalance < 0) availableBalance = 0;
+                            if (numberOfDays > availableBalance) {
+                                leave.addError('Please Apply for Unpaid Leave becuase Insufficient Sick Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
                             }
                         }
-                    }else{
+                    } else {
                         leave.addError('Leave balance record not found for the employee.');
                         continue;
                     }
@@ -116,29 +125,52 @@ public with sharing class LeaveTriggerHandler{
             }
             ownerToLeavesMap.get(existingLeave.OwnerId).add(existingLeave);
         }
+        Set<Id> contextIds = new Set<Id>();
+        for (Leave__c nl : newLeaves){
+            if (nl.Id != null){
+                contextIds.add(nl.Id);
+            }
+        }
+        Map<Id, Boolean> ownerHasActiveExistingLeave = new Map<Id, Boolean>();
+        Map<Id, List<Leave__c>> ownerApprovedLeavesMap = new Map<Id, List<Leave__c>>();
+        for (Id oid : ownerToLeavesMap.keySet()){
+            List<Leave__c> oLeaves = ownerToLeavesMap.get(oid);
+            Boolean hasActive = false;
+            List<Leave__c> approved = new List<Leave__c>();
+            for (Leave__c e : oLeaves){
+                if (contextIds.contains(e.Id)) {
+                    continue;
+                }
+                if (e.Status__c == 'Active'){
+                    hasActive = true;
+                } else if (e.Status__c == 'Approved'){
+                    approved.add(e);
+                }
+            }
+            ownerHasActiveExistingLeave.put(oid, hasActive);
+            ownerApprovedLeavesMap.put(oid, approved);
+        }
         for(Leave__c leave:newLeaves){
             if(leave.OwnerId!=null){
-                List<Leave__c> ownerLeaves=ownerToLeavesMap.get(leave.OwnerId);
                 Boolean isActiveLeave=(leave.Status__c!=null&&leave.Status__c=='Active');
                 if(isActiveLeave){
-                    if(ownerLeaves!=null){
-                        for(Leave__c existingLeave:ownerLeaves){
-                            if(existingLeave.Status__c!=null&&existingLeave.Status__c=='Active'){
-                                leave.addError('Only one active leave record is allowed per employee.');
-                                break;
-                            }
-                        }
+                    Boolean hasOtherActive = ownerHasActiveExistingLeave.get(leave.OwnerId);
+                    if (hasOtherActive == true){
+                        leave.addError('Only one active leave record is allowed per employee.');
                     }
                 }
                 if(leave.Start_Date__c!=null&&leave.End_Date__c!=null){
-                    if(ownerLeaves!=null){
-                        for(Leave__c existingLeave:ownerLeaves){
-                            if(existingLeave.Status__c!=null&&existingLeave.Status__c=='Approved'&&existingLeave.Id!=leave.Id){
-                                if((leave.Start_Date__c <= existingLeave.End_Date__c)&&(leave.End_Date__c >= existingLeave.Start_Date__c)){
+                    List<Leave__c> approvedLeaves = ownerApprovedLeavesMap.get(leave.OwnerId);
+                    if (approvedLeaves != null && !approvedLeaves.isEmpty()){
+                        Date newStart = leave.Start_Date__c;
+                        Date newEnd = leave.End_Date__c;
+                        for (Leave__c existingLeave : approvedLeaves){
+                            if(existingLeave.Id!=leave.Id){
+                                if((newStart <= existingLeave.End_Date__c) && (newEnd >= existingLeave.Start_Date__c)){
                                     leave.addError('You already have leave in this time period (' + 
                                                   existingLeave.Start_Date__c + ' to ' + existingLeave.End_Date__c + '). ' +
                                                   'You cannot apply for more leave in the same time period.');
-                            break;
+                                    break;
                                 }
                             }
                         }
@@ -355,12 +387,9 @@ public with sharing class LeaveTriggerHandler{
             }
             List<Messaging.SingleEmailMessage> emails=new List<Messaging.SingleEmailMessage>();
             Set<Id> allUserIds=new Set<Id>();
-            
-            // Collect all user IDs that need to be queried (owners and their delegated approvers)
             for (Leave__c leave:inactivatedLeaves){
                 allUserIds.add(leave.OwnerId);
             }
-            // Query users to get DelegatedApproverId for all involved users
             Map<Id,Id> originalOwnerToDelegatedApproverMap = new Map<Id,Id>();
             List<User> usersWithDelegatedApprovers = [
                 SELECT 
@@ -374,15 +403,12 @@ public with sharing class LeaveTriggerHandler{
             for(User u : usersWithDelegatedApprovers) {
                 originalOwnerToDelegatedApproverMap.put(u.Id, u.DelegatedApproverId);
             }
-            
-            // Add delegated approvers to the set of users to query
             for (Leave__c leave:inactivatedLeaves){
                 Id delegatedApproverId = originalOwnerToDelegatedApproverMap.get(leave.OwnerId);
                 if (delegatedApproverId != null){
                     allUserIds.add(delegatedApproverId);
                 }
             }
-            
             Map<Id,User> userMap=new Map<Id,User>([
                 SELECT 
                     Id,Email,Name

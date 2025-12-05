@@ -103,7 +103,7 @@ public class LeaveTriggerHandlerTest {
                 Status__c = PENDING_STATUS
             );
             insert firstActive;
-            // Second active leave should fail
+            
             Leave__c secondActive = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today().addDays(2),
@@ -170,6 +170,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Email = 'testuser@example.com' LIMIT 1];
         System.runAs(testUser) {
+            
             Leave__c firstLeave = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today(),
@@ -178,21 +179,23 @@ public class LeaveTriggerHandlerTest {
                 Status__c = PENDING_STATUS
             );
             insert firstLeave;
+
+            
             Leave__c secondLeave = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today().addDays(10),
-                End_Date__c = Date.today().addDays(123),
+                End_Date__c = Date.today().addDays(12),
                 Leave_Type__c = EARNED_LEAVE,
                 Status__c = PENDING_STATUS
             );
             Test.startTest();
-             try {
+            try {
                 insert secondLeave;
                 System.assert(false, 'Expected DmlException was not thrown');
             } catch (Exception e) {
                 System.assert(
-                    e.getMessage().contains('Insufficient Sick Leave balance'),
-                    'Error message should indicate insufficient sick leave balance'
+                    e.getMessage().contains('Insufficient Earned Leave balance'),
+                    'Error message should indicate insufficient earned leave balance'
                 );
             }
             Test.stopTest();
@@ -207,7 +210,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE
                             Email = 'testuser@example.com' LIMIT 1];
         System.runAs(testUser) {
-            // Create a leave that uses up the balance - must be Pending first
+            
             Leave__c firstLeave = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today(),
@@ -216,7 +219,7 @@ public class LeaveTriggerHandlerTest {
                 Status__c = PENDING_STATUS
             );
             insert firstLeave;
-            // Try to create another leave that exceeds balance
+            
             Leave__c secondLeave = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today().addDays(10),
@@ -246,7 +249,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Email = 'testuser@example.com' LIMIT 1];
         System.runAs(testUser) {
-            // Create first leave as Pending
+            
             Leave__c firstLeave = new Leave__c(
                 OwnerId = testUser.Id,
                 Start_Date__c = Date.today(),
@@ -350,7 +353,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Profile.Name = 'System Administrator' LIMIT 1];
         
-        // Create test cases owned by testUser
+        
         List<Case> cases = new List<Case>();
         for(Integer i = 0; i < 2; i++) {
             cases.add(new Case(
@@ -399,7 +402,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Profile.Name = 'System Administrator' LIMIT 1];
         
-        // Create test cases
+        
         List<Case> cases = new List<Case>();
         for(Integer i = 0; i < 2; i++) {
             cases.add(new Case(
@@ -422,7 +425,7 @@ public class LeaveTriggerHandlerTest {
             leave.Status__c = ACTIVE_STATUS;
             Database.update(leave, false);
             Test.stopTest();
-            // Verify email was sent
+            
             System.assertEquals(0, Limits.getEmailInvocations(), 
                 'One email should be sent to delegated user');
         }
@@ -448,7 +451,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Profile.Name = 'System Administrator' LIMIT 1];
         
-        // Create delegated cases
+        
         List<Case> delegatedCases = new List<Case>();
         for(Integer i = 0; i < 2; i++) {
             delegatedCases.add(new Case(
@@ -479,7 +482,7 @@ public class LeaveTriggerHandlerTest {
             
             System.assertEquals(true, result.isSuccess(), 'Admin should be able to inactivate leave');
             
-            // Verify cases were reassigned back to original owner
+            
             List<Case> updatedCases = [SELECT 
                                 OwnerId, Is_delegated__c, Orginal_Owner_Id__c 
                                        
@@ -518,7 +521,7 @@ public class LeaveTriggerHandlerTest {
                         WHERE 
                             Profile.Name = 'System Administrator' LIMIT 1];
         
-        // Create delegated case
+        
         Case delegatedCase = new Case(
             Subject = 'Delegated Case',
             OwnerId = delegatedUser.Id,
@@ -561,7 +564,7 @@ public class LeaveTriggerHandlerTest {
                             User 
                         WHERE 
                             Profile.Name = 'System Administrator' LIMIT 1];
-        // Create test case
+        
         Case testCase = new Case(
             Subject = 'Test Case',
             OwnerId = testUser.Id,
