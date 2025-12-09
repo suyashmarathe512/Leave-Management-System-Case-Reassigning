@@ -564,3 +564,4 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     }
 }
 }
+}
