@@ -6,9 +6,10 @@
 public with sharing class LeaveTriggerHandler{
     /********************************************************************************************************************
      * @Author:          CRM Team Innovation
-     * @methodName:      handleBeforeInsertUpdate
-     * @param:         newLeaves-List of Leave__c records before insert/update
-     * @Description:     Validate leave applications and adjust leave types based on balances before insert/update
+     * @methodName:      calculateBusinessDays
+     * @param:         startDate-Start date of the leave
+     * @param:         endDate-End date of the leave
+     * @Description:    Helper method to calculate business days between two dates
      **********************************************************************************************************************/
     private static Integer calculateBusinessDays(Date startDate,Date endDate){
         Integer businessDays=0;
@@ -306,10 +307,11 @@ public with sharing class LeaveTriggerHandler{
  * @Description: Helper method to query Case records and return a list
  **************************************************************************************************************************/
 private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
-    String query =
-        'SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c ' +
-        'FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
-    return Database.query(query);
+    return [
+        SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c
+        FROM Case
+        WHERE OwnerId IN :ownerIds AND IsClosed = false
+    ];
 }
 /************************************************************************************************************************
  * @Author:      CRM Team Innovation
@@ -361,28 +363,28 @@ private static String buildCaseSummaryLines(List<Case> casesList){
  *               - All logic driven from maps
  **************************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
-    if(newLeaves == null || newLeaves.isEmpty() || oldMap == null || oldMap.isEmpty()){
-        return;
-    }
-    // 1. Identify activated and inactivated leaves(status changes)
-    List<Leave__c> activatedLeaves  =new List<Leave__c>();
-    List<Leave__c> inactivatedLeaves=new List<Leave__c>();
-    for(Leave__c newLeave:newLeaves){
-        Leave__c oldLeave=oldMap.get(newLeave.Id);
-        if(oldLeave == null){
-            continue;
+        if(newLeaves == null || newLeaves.isEmpty() || oldMap == null || oldMap.isEmpty()){
+            return;
         }
-        if(newLeave.Status__c == 'Active' && oldLeave.Status__c != 'Active'){
-            activatedLeaves.add(newLeave);
-        } else if(newLeave.Status__c == 'Inactive' && oldLeave.Status__c != 'Inactive'){
-            inactivatedLeaves.add(newLeave);
+        // 1. Identify activated and inactivated leaves(status changes)
+        List<Leave__c> activatedLeaves  = new List<Leave__c>();
+        List<Leave__c> inactivatedLeaves = new List<Leave__c>();
+        for(Leave__c newLeave:newLeaves){
+            Leave__c oldLeave=oldMap.get(newLeave.Id);
+            if(oldLeave == null){
+                continue;
+            }
+            if(newLeave.Status__c == 'Active' && oldLeave.Status__c != 'Active'){
+                activatedLeaves.add(newLeave);
+            } else if(newLeave.Status__c == 'Inactive' && oldLeave.Status__c != 'Inactive'){
+                inactivatedLeaves.add(newLeave);
+            }
         }
-    }
     if(activatedLeaves.isEmpty() && inactivatedLeaves.isEmpty()){
         return;
     }
     // 2. Collect all involved owner Ids(both Active and Inactive)
-    Set<Id> activeOwnerIds  =new Set<Id>();
+    Set<Id> activeOwnerIds  = new Set<Id>();
     Set<Id> inactiveOwnerIds=new Set<Id>();
     for(Leave__c leave:activatedLeaves){
         if(leave.OwnerId != null){
@@ -412,6 +414,7 @@ private static String buildCaseSummaryLines(List<Case> casesList){
                 delegateIds.add(u.DelegatedApproverId);
             }
         }
+    }
     // 4. SINGLE Case query – via getCases
     Set<Id> caseOwnerIds=new Set<Id>();
     caseOwnerIds.addAll(allOwnerIds);
@@ -494,18 +497,24 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     }
     // 8. Cases with no delegate → Case_Queue
     if(!casesToMoveToQueue.isEmpty()){
-        Id caseQueueId=[
-            SELECT Id
-            FROM Group
-            WHERE Name='Case_Queue'
+        List<Group> queueList = [
+            SELECT 
+                Id
+            FROM 
+                Group
+            WHERE 
+                Name = 'Case_Queue'
             LIMIT 1
-        ].Id;
-        for(Case c:casesToMoveToQueue){
-            c.OwnerId            =caseQueueId;
-            c.Is_delegated__c    =false;
-            c.Orginal_Owner_Id__c=null;
-        }
-        allCasesToUpdate.addAll(casesToMoveToQueue);
+        ];
+        if (!queueList.isEmpty()) {
+            Id caseQueueId = queueList[0].Id;
+            for (Case c : casesToMoveToQueue) {
+                c.OwnerId = caseQueueId;
+                c.Is_delegated__c = false;
+                c.Orginal_Owner_Id__c = null;
+            }
+            allCasesToUpdate.addAll(casesToMoveToQueue);
+        } else {}
     }
     // Single bulk DML for all case changes
     if(!allCasesToUpdate.isEmpty()){
@@ -562,6 +571,5 @@ private static String buildCaseSummaryLines(List<Case> casesList){
             sendEmail(delegatedUser.Email,subjectDelegate,bodyDelegate);
         }
     }
-}
 }
 }
