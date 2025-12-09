@@ -32,14 +32,14 @@ public with sharing class LeaveTriggerHandler{
      * @Description:     Helper method to check if a new leave record overlaps with existing ones
      **********************************************************************************************************************/
     private static Boolean checkForOverlappingDates(Leave__c newLeave,List<Leave__c> existingLeaves){
-        if(newLeave.Start_Date__c == null || newLeave.End_Date__c == null){
+        if(newLeave.Start_Date__c==null||newLeave.End_Date__c==null){
             return false;
         }
         Date newStart=newLeave.Start_Date__c;
         Date newEnd=newLeave.End_Date__c;
         for(Leave__c existingLeave:existingLeaves){
             if(existingLeave.Id!=newLeave.Id){
-                if(existingLeave.Status__c == 'Active' || existingLeave.Status__c == 'Approved'){
+                if(existingLeave.Status__c=='Active'||existingLeave.Status__c=='Approved'){
                     if((newStart <= existingLeave.End_Date__c) &&(newEnd >= existingLeave.Start_Date__c)){
                         return true; 
                     }
@@ -57,7 +57,7 @@ public with sharing class LeaveTriggerHandler{
     * @Description:    Helper method to send email notifications
     *****************************************************************************************************************************/
     private static void sendEmail(String toAddress,String subject,String body){
-        if(String.isBlank(toAddress) || String.isBlank(subject) || String.isBlank(body)){
+        if(String.isBlank(toAddress)||String.isBlank(subject)||String.isBlank(body)){
             return;
         }
         Messaging.SingleEmailMessage email=new Messaging.SingleEmailMessage();
@@ -115,10 +115,10 @@ public with sharing class LeaveTriggerHandler{
             Id ownerId=(Id)ar.get('OwnerId');
             String leaveType=(String)ar.get('Leave_Type__c');
             Decimal sumDays=(Decimal)ar.get('sumDays');
-            if(leaveType == 'Earned_Leave'){
-                earnedBookedMap.put(ownerId,sumDays!=null ? sumDays:0);
-            } else if(leaveType == 'Sick_Leave'){
-                sickBookedMap.put(ownerId,sumDays!=null ? sumDays:0);
+            if(leaveType=='Earned_Leave'){
+                earnedBookedMap.put(ownerId,sumDays!=null?sumDays:0);
+            } else if(leaveType=='Sick_Leave'){
+                sickBookedMap.put(ownerId,sumDays!=null?sumDays:0);
             }
         }
         for(Id oid:ownerIds){
@@ -181,13 +181,13 @@ public with sharing class LeaveTriggerHandler{
             ownerExistingLeavesMap.get(leave.OwnerId).add(leave);
         }
         for(Leave__c leave:newLeaves){
-            if(leave.OwnerId == null){
+            if(leave.OwnerId==null){
                 continue;
             }
-            Boolean isActiveLeave=(leave.Status__c!=null&&leave.Status__c == 'Active');
+            Boolean isActiveLeave=(leave.Status__c!=null&&leave.Status__c=='Active');
             if(isActiveLeave){
                 Boolean hasOtherActive=ownerHasActiveExistingLeave.get(leave.OwnerId);
-                if(hasOtherActive == true){
+                if(hasOtherActive==true){
                 }
             }
             if(leave.Start_Date__c!=null&&leave.End_Date__c!=null){
@@ -196,20 +196,20 @@ public with sharing class LeaveTriggerHandler{
                     leave.addError('Invalid date range. End Date must be on or after Start Date.');
                     continue;
                 }
-                if(leave.Leave_Type__c == 'Earned_Leave' || leave.Leave_Type__c == 'Sick_Leave'){
+                if(leave.Leave_Type__c=='Earned_Leave'||leave.Leave_Type__c=='Sick_Leave'){
                     Leave_Balance__c balance=balanceMap.get(leave.OwnerId);
                     if(balance!=null){
                         Decimal bookedEarned=earnedBookedMap.get(leave.OwnerId);
                         Decimal bookedSick=sickBookedMap.get(leave.OwnerId);
                         Decimal earnedTotal=balance.Earned_Leave__c;
                         Decimal sickTotal=balance.Sick_Leave__c;
-                        if(leave.Leave_Type__c == 'Earned_Leave'){
+                        if(leave.Leave_Type__c=='Earned_Leave'){
                             Decimal availableBalance=earnedTotal - bookedEarned;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
                                 leave.addError('Please apply for Unpaid Leave becuase insufficient Earned Leave balance. Available: '+availableBalance+' day(s). Requested: '+numberOfDays+' day(s).');
                             }
-                        } else if(leave.Leave_Type__c == 'Sick_Leave'){
+                        } else if(leave.Leave_Type__c=='Sick_Leave'){
                             Decimal availableBalance=sickTotal - bookedSick;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
@@ -221,12 +221,12 @@ public with sharing class LeaveTriggerHandler{
                         continue;
                     }
                 }
-                if(oldMap == null ||(oldMap!=null &&(leave.Status__c == 'Pending' || leave.Status__c == 'Approved'))){
+                if(oldMap==null ||(oldMap!=null &&(leave.Status__c=='Pending'||leave.Status__c=='Approved'))){
                     List<Leave__c> existingApprovedLeaves=ownerExistingLeavesMap.get(leave.OwnerId);
                     if(existingApprovedLeaves!=null&&!existingApprovedLeaves.isEmpty()){
                         if(checkForOverlappingDates(leave,existingApprovedLeaves)){
-                            leave.addError('You already have leave in this time period(' +
-                                existingApprovedLeaves[0].Start_Date__c+' to '+existingApprovedLeaves[0].End_Date__c+'). ' +
+                            leave.addError('You already have leave in this time period('+
+                                existingApprovedLeaves[0].Start_Date__c+' to '+existingApprovedLeaves[0].End_Date__c+'). '+
                                 'You cannot apply for more leave in the same time period.');
                         }
                     }
@@ -278,7 +278,7 @@ public with sharing class LeaveTriggerHandler{
                 Approval.ProcessResult result=Approval.process(req);
                 if(!result.isSuccess()){
                     System.debug('Approval failed for '+leave.Id+': '
-                    +result.getErrors());
+                +result.getErrors());
                 }
             }
         }
@@ -310,7 +310,7 @@ private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
     return [
         SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c
         FROM Case
-        WHERE OwnerId IN :ownerIds AND IsClosed = false
+        WHERE OwnerId IN :ownerIds AND IsClosed=false
     ];
 }
 /************************************************************************************************************************
@@ -324,13 +324,13 @@ private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
  *               No DML here. Caller performs bulk DML once.
  **************************************************************************************************************************/
 private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id originalOwner,Boolean isDelegated){
-    if(casesToUpdate == null || casesToUpdate.isEmpty()){
+    if(casesToUpdate==null||casesToUpdate.isEmpty()){
         return;
     }
     for(Case c:casesToUpdate){
-        c.OwnerId            =newOwner;
+        c.OwnerId           =newOwner;
         c.Orginal_Owner_Id__c=originalOwner;
-        c.Is_delegated__c    =isDelegated;
+        c.Is_delegated__c   =isDelegated;
     }
 }
 /************************************************************************************************************************
@@ -340,15 +340,15 @@ private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id origin
  **************************************************************************************************************************/
 private static String buildCaseSummaryLines(List<Case> casesList){
     String body='';
-    if(casesList == null){
+    if(casesList==null){
         return body;
     }
     for(Case c:casesList){
-        body += 'Case Number: ' + c.CaseNumber + '\n';
-        body += 'Subject: '     + c.Subject     + '\n';
-        body += 'Status: '      + c.Status      + '\n';
-        body += 'Priority: '    + c.Priority    + '\n';
-        body += 'Type: '        + c.Type        + '\n\n';
+        body+= 'Case Number: '+c.CaseNumber+'\n';
+        body+= 'Subject: '   +c.Subject   +'\n';
+        body+= 'Status: '    +c.Status    +'\n';
+        body+= 'Priority: '  +c.Priority  +'\n';
+        body+= 'Type: '      +c.Type      +'\n\n';
     }
     return body;
 }
@@ -363,36 +363,36 @@ private static String buildCaseSummaryLines(List<Case> casesList){
  *               - All logic driven from maps
  **************************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
-        if(newLeaves == null || newLeaves.isEmpty() || oldMap == null || oldMap.isEmpty()){
+        if(newLeaves==null||newLeaves.isEmpty()||oldMap==null||oldMap.isEmpty()){
             return;
         }
         // 1. Identify activated and inactivated leaves(status changes)
-        List<Leave__c> activatedLeaves  = new List<Leave__c>();
-        List<Leave__c> inactivatedLeaves = new List<Leave__c>();
+        List<Leave__c> activatedLeaves=new List<Leave__c>();
+        List<Leave__c> inactivatedLeaves=new List<Leave__c>();
         for(Leave__c newLeave:newLeaves){
             Leave__c oldLeave=oldMap.get(newLeave.Id);
-            if(oldLeave == null){
+            if(oldLeave==null){
                 continue;
             }
-            if(newLeave.Status__c == 'Active' && oldLeave.Status__c != 'Active'){
+            if(newLeave.Status__c=='Active'&&oldLeave.Status__c!='Active'){
                 activatedLeaves.add(newLeave);
-            } else if(newLeave.Status__c == 'Inactive' && oldLeave.Status__c != 'Inactive'){
+            } else if(newLeave.Status__c=='Inactive'&&oldLeave.Status__c!='Inactive'){
                 inactivatedLeaves.add(newLeave);
             }
         }
-    if(activatedLeaves.isEmpty() && inactivatedLeaves.isEmpty()){
+    if(activatedLeaves.isEmpty()&&inactivatedLeaves.isEmpty()){
         return;
     }
     // 2. Collect all involved owner Ids(both Active and Inactive)
-    Set<Id> activeOwnerIds  = new Set<Id>();
+    Set<Id> activeOwnerIds=new Set<Id>();
     Set<Id> inactiveOwnerIds=new Set<Id>();
     for(Leave__c leave:activatedLeaves){
-        if(leave.OwnerId != null){
+        if(leave.OwnerId!=null){
             activeOwnerIds.add(leave.OwnerId);
         }
     }
     for(Leave__c leave:inactivatedLeaves){
-        if(leave.OwnerId != null){
+        if(leave.OwnerId!=null){
             inactiveOwnerIds.add(leave.OwnerId);
         }
     }
@@ -403,14 +403,14 @@ private static String buildCaseSummaryLines(List<Case> casesList){
         return;
     }
     // 3. User queries – single query for all owners and their delegates to handle circular delegations
-    Map<Id,User> allUserMap = getUserMap(allOwnerIds);
+    Map<Id,User> allUserMap=getUserMap(allOwnerIds);
     // 3.2 Build owner -> delegate map from allUserMap
-    Map<Id,Id> ownerToDelegateMap = new Map<Id,Id>();
-    Set<Id> delegateIds = new Set<Id>();
-    for (User u : allUserMap.values()) {
-        if (allOwnerIds.contains(u.Id)) {
+    Map<Id,Id> ownerToDelegateMap=new Map<Id,Id>();
+    Set<Id> delegateIds=new Set<Id>();
+    for (User u : allUserMap.values()){
+        if (allOwnerIds.contains(u.Id)){
             ownerToDelegateMap.put(u.Id, u.DelegatedApproverId);
-            if (u.DelegatedApproverId != null) {
+            if (u.DelegatedApproverId!=null){
                 delegateIds.add(u.DelegatedApproverId);
             }
         }
@@ -424,7 +424,7 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     Map<Id,List<Case>> ownerToCasesMap=new Map<Id,List<Case>>();
     for(Case c:allOpenCases){
         List<Case> bucket=ownerToCasesMap.get(c.OwnerId);
-        if(bucket == null){
+        if(bucket==null){
             bucket=new List<Case>();
             ownerToCasesMap.put(c.OwnerId,bucket);
         }
@@ -442,17 +442,17 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     if(!activeOwnerIds.isEmpty()){
         for(Id ownerId:activeOwnerIds){
             List<Case> userCases=ownerToCasesMap.get(ownerId);
-            if(userCases == null || userCases.isEmpty()){
+            if(userCases==null||userCases.isEmpty()){
                 continue;
             }
             Id delegateId=ownerToDelegateMap.get(ownerId);
-            if(delegateId != null){
+            if(delegateId!=null){
                 // Reassign all of this owner's cases to delegate in memory
                 List<Case> casesForThisOwner=new List<Case>(userCases);
                 reassignCases(casesForThisOwner,delegateId,ownerId,true);
                 allCasesToUpdate.addAll(casesForThisOwner);
                 List<Case> delegateBucket=delegateToCasesActivatedMap.get(delegateId);
-                if(delegateBucket == null){
+                if(delegateBucket==null){
                     delegateBucket=new List<Case>();
                     delegateToCasesActivatedMap.put(delegateId,delegateBucket);
                 }
@@ -467,17 +467,17 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     if(!inactiveOwnerIds.isEmpty()){
         for(Id originalOwnerId:inactiveOwnerIds){
             Id delegateId=ownerToDelegateMap.get(originalOwnerId);
-            if(delegateId == null){
+            if(delegateId==null){
                 continue;
             }
             List<Case> delegateCases=ownerToCasesMap.get(delegateId);
-            if(delegateCases == null || delegateCases.isEmpty()){
+            if(delegateCases==null||delegateCases.isEmpty()){
                 continue;
             }
             List<Case> casesForThisOwner=new List<Case>();
             for(Case c:delegateCases){
                 // Only pick cases that were delegated from this owner
-                if(c.Is_delegated__c == true && c.Orginal_Owner_Id__c == originalOwnerId){
+                if(c.Is_delegated__c==true&&c.Orginal_Owner_Id__c==originalOwnerId){
                     casesForThisOwner.add(c);
                 }
             }
@@ -488,7 +488,7 @@ private static String buildCaseSummaryLines(List<Case> casesList){
             reassignCases(casesForThisOwner,originalOwnerId,null,false);
             allCasesToUpdate.addAll(casesForThisOwner);
             List<Case> originalBucket=originalOwnerToCasesReturnedMap.get(originalOwnerId);
-            if(originalBucket == null){
+            if(originalBucket==null){
                 originalBucket=new List<Case>();
                 originalOwnerToCasesReturnedMap.put(originalOwnerId,originalBucket);
             }
@@ -497,24 +497,24 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     }
     // 8. Cases with no delegate → Case_Queue
     if(!casesToMoveToQueue.isEmpty()){
-        List<Group> queueList = [
+        List<Group> queueList=[
             SELECT 
                 Id
             FROM 
                 Group
             WHERE 
-                Name = 'Case_Queue'
+                Name='Case_Queue'
             LIMIT 1
         ];
-        if (!queueList.isEmpty()) {
-            Id caseQueueId = queueList[0].Id;
-            for (Case c : casesToMoveToQueue) {
-                c.OwnerId = caseQueueId;
-                c.Is_delegated__c = false;
-                c.Orginal_Owner_Id__c = null;
+        if (!queueList.isEmpty()){
+            Id caseQueueId=queueList[0].Id;
+            for (Case c : casesToMoveToQueue){
+                c.OwnerId=caseQueueId;
+                c.Is_delegated__c=false;
+                c.Orginal_Owner_Id__c=null;
             }
             allCasesToUpdate.addAll(casesToMoveToQueue);
-        } else {}
+        } else{}
     }
     // Single bulk DML for all case changes
     if(!allCasesToUpdate.isEmpty()){
@@ -524,18 +524,18 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     //  Emails to delegates for newly assigned cases(Active)
     for(Id delegateId:delegateToCasesActivatedMap.keySet()){
         User delegatedUser=allUserMap.get(delegateId);
-        if(delegatedUser == null || String.isBlank(delegatedUser.Email)){
+        if(delegatedUser==null||String.isBlank(delegatedUser.Email)){
             continue;
         }
         List<Case> casesForDelegate=delegateToCasesActivatedMap.get(delegateId);
-        if(casesForDelegate == null || casesForDelegate.isEmpty()){
+        if(casesForDelegate==null||casesForDelegate.isEmpty()){
             continue;
         }
         String subject='Reassigned Cases Summary';
-        String body =
-            'Dear ' + delegatedUser.Name + ',\n\n' +
-            'The following cases have been reassigned to you as the delegated user for an employee on leave:\n\n' +
-            buildCaseSummaryLines(casesForDelegate) +
+        String body=
+            'Dear '+delegatedUser.Name+',\n\n'+
+            'The following cases have been reassigned to you as the delegated user for an employee on leave:\n\n'+
+            buildCaseSummaryLines(casesForDelegate)+
             '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
 
         sendEmail(delegatedUser.Email,subject,body);
@@ -543,30 +543,30 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     // Emails to original owners(and delegates) for returned cases(Inactive)
     for(Id originalOwnerId:originalOwnerToCasesReturnedMap.keySet()){
         List<Case> returnedCases=originalOwnerToCasesReturnedMap.get(originalOwnerId);
-        if(returnedCases == null || returnedCases.isEmpty()){
+        if(returnedCases==null||returnedCases.isEmpty()){
             continue;
         }
         User originalUser=allUserMap.get(originalOwnerId);
-        Id delegateId    =ownerToDelegateMap.get(originalOwnerId);
-        User delegatedUser=(delegateId != null) ? allUserMap.get(delegateId):null;
+        Id delegateId=ownerToDelegateMap.get(originalOwnerId);
+        User delegatedUser=(delegateId!=null)?allUserMap.get(delegateId):null;
         String caseLines=buildCaseSummaryLines(returnedCases);
-        if(originalUser != null && !String.isBlank(originalUser.Email)){
+        if(originalUser!=null&&!String.isBlank(originalUser.Email)){
             String subjectOwner='Cases Reassigned Back to You';
-            String bodyOwner =
-                'Dear ' + originalUser.Name + ',\n\n' +
-                'Your leave has ended,and the following cases have been reassigned back to you:\n\n' +
-                caseLines +
+            String bodyOwner=
+                'Dear '+originalUser.Name+',\n\n'+
+                'Your leave has ended,and the following cases have been reassigned back to you:\n\n'+
+                caseLines+
                 '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
 
             sendEmail(originalUser.Email,subjectOwner,bodyOwner);
         }
         // Email to delegate
-        if(delegatedUser != null && !String.isBlank(delegatedUser.Email)){
+        if(delegatedUser!=null&&!String.isBlank(delegatedUser.Email)){
             String subjectDelegate='Cases Reassigned Back to Original Owner';
-            String bodyDelegate =
-                'Dear ' + delegatedUser.Name + ',\n\n' +
-                'The leave period has ended,and the following cases have been reassigned back to the original owner:\n\n' +
-                caseLines +
+            String bodyDelegate=
+                'Dear '+delegatedUser.Name+',\n\n'+
+                'The leave period has ended,and the following cases have been reassigned back to the original owner:\n\n'+
+                caseLines+
                 '\nBest regards,\nLeave Management System';
             sendEmail(delegatedUser.Email,subjectDelegate,bodyDelegate);
         }
