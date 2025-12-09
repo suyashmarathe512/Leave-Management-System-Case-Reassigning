@@ -248,30 +248,10 @@ public with sharing class LeaveTriggerHandler{
                        
                         for(Leave__c activeLeave:allActiveLeaves){
                             if((leave.Start_Date__c <= activeLeave.End_Date__c)&&
-                            (leave.End_Date__c >= activeLeave.Start_Date__c)){
+                        (leave.End_Date__c >= activeLeave.Start_Date__c)){
                                 leave.addError('Only one active leave record is allowed per employee.');
                                 break;
                             }
-                        }
-                    }
-                }
-                if(oldMap!=null){
-                    Leave__c oldLeave=oldMap.get(leave.Id);
-                    if(oldLeave!=null&&leave.Status__c == 'Approved'&&leave.Start_Date__c == Date.today()){
-                        List<Leave__c> allActiveLeaves=[
-                            SELECT 
-                                Id,OwnerId,Status__c
-                            FROM 
-                                Leave__c
-                            WHERE 
-                                OwnerId=:leave.OwnerId
-                            AND 
-                                Status__c='Active'
-                            AND 
-                                Id NOT IN :contextIds
-                        ];
-                        if(allActiveLeaves.isEmpty()){
-                            leave.Status__c='Active';
                         }
                     }
                 }
@@ -308,245 +288,279 @@ public with sharing class LeaveTriggerHandler{
      * @param:         userIds-Set of User Ids to query
      * @Description:     Helper method to query User records and return a map
      **************************************************************************************************************************/
-    private static Map<Id,User> getUserMap(Set<Id> userIds){
-        return new Map<Id,User>([
-            SELECT
-                Id,DelegatedApproverId,Email,Name
-            FROM
-                User
-            WHERE
-                Id IN :userIds
-        ]);
+   private static Map<Id,User> getUserMap(Set<Id> ownerIds){
+    return new Map<Id,User>([
+        SELECT
+            Id,DelegatedApproverId,Email,Name
+        FROM
+            User
+        WHERE
+            Id IN :ownerIds OR DelegatedApproverId IN :ownerIds
+    ]);
+}
+/************************************************************************************************************************
+ * @Author:      CRM Team Innovation
+ * @methodName:  getCases
+ * @param:       ownerIds-Set of Owner Ids to query
+ * @param:       isDelegated-Boolean to filter by Is_delegated__c(null for no filter)
+ * @Description: Helper method to query Case records and return a list
+ **************************************************************************************************************************/
+private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
+    String query =
+        'SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c ' +
+        'FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
+    return Database.query(query);
+}
+/************************************************************************************************************************
+ * @Author:      CRM Team Innovation
+ * @methodName:  reassignCases
+ * @param:       casesToUpdate-List of Case records to update
+ * @param:       newOwner-New Owner Id to assign
+ * @param:       originalOwner-Original Owner Id(can be null)
+ * @param:       isDelegated-Boolean flag for Is_delegated__c
+ * @Description: Helper method to reassign cases by setting owner and delegation fields.
+ *               No DML here. Caller performs bulk DML once.
+ **************************************************************************************************************************/
+private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id originalOwner,Boolean isDelegated){
+    if(casesToUpdate == null || casesToUpdate.isEmpty()){
+        return;
     }
-    /************************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      getCases
-     * @param:         ownerIds-Set of Owner Ids to query
-     * @param:         isDelegated-Boolean to filter by Is_delegated__c(null for no filter)
-     * @Description:     Helper method to query Case records and return a list
-     **************************************************************************************************************************/
-    private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
-        String query='SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
-        if(isDelegated!=null){
-            query+=' AND Is_delegated__c=:isDelegated';
-        }
-        return Database.query(query);
+    for(Case c:casesToUpdate){
+        c.OwnerId            =newOwner;
+        c.Orginal_Owner_Id__c=originalOwner;
+        c.Is_delegated__c    =isDelegated;
     }
-    /************************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      reassignCases
-     * @param:         casesToUpdate-List of Case records to update
-     * @param:         newOwner-New Owner Id to assign
-     * @param:         originalOwner-Original Owner Id(can be null)
-     * @param:         isDelegated-Boolean flag for Is_delegated__c
-     * @Description:     Helper method to reassign cases by setting owner and delegation fields and performing DML
-     **************************************************************************************************************************/
-    private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id originalOwner,Boolean isDelegated){
-        for(Case c:casesToUpdate){
-            c.OwnerId=newOwner;
-            c.Orginal_Owner_Id__c=originalOwner;
-            c.Is_delegated__c=isDelegated;
-        }
-        if(!casesToUpdate.isEmpty()){
-            Database.update(casesToUpdate,false);
-        }
+}
+/************************************************************************************************************************
+ * @Author:      CRM Team Innovation
+ * @methodName:  buildCaseSummaryLines
+ * @Description: Common helper to build "case details" text block for emails
+ **************************************************************************************************************************/
+private static String buildCaseSummaryLines(List<Case> casesList){
+    String body='';
+    if(casesList == null){
+        return body;
     }
-    /************************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      handleAfterUpdate
-     * @param:         newLeaves-List of Leave__c records after update
-     * @param:         oldMap-Map of Leave__c records before update
-     * @Description:     Handle case reassignment when leave status changes to Active or Inactive
-     **************************************************************************************************************************/
+    for(Case c:casesList){
+        body += 'Case Number: ' + c.CaseNumber + '\n';
+        body += 'Subject: '     + c.Subject     + '\n';
+        body += 'Status: '      + c.Status      + '\n';
+        body += 'Priority: '    + c.Priority    + '\n';
+        body += 'Type: '        + c.Type        + '\n\n';
+    }
+    return body;
+}
+/************************************************************************************************************************
+ * @Author:      CRM Team Innovation
+ * @methodName:  handleAfterUpdate
+ * @param:       newLeaves-List of Leave__c records after update
+ * @param:       oldMap-Map of Leave__c records before update
+ * @Description: Handle case reassignment when leave status changes to Active or Inactive
+ *               - 1 User query total
+ *               - 1 Case query total(via getCases)
+ *               - All logic driven from maps
+ **************************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
-        List<Leave__c> activatedLeaves=new List<Leave__c>();
-        List<Leave__c> inactivatedLeaves=new List<Leave__c>();
-        for(Leave__c leave:newLeaves){
-            Leave__c oldLeave=oldMap.get(leave.Id);
-            if(leave.Status__c=='Active'&&oldLeave.Status__c!='Active'){
-                activatedLeaves.add(leave);
-            }
-            if(leave.Status__c=='Inactive'&&oldLeave.Status__c!='Inactive'){
-                inactivatedLeaves.add(leave);
+    if(newLeaves == null || newLeaves.isEmpty() || oldMap == null || oldMap.isEmpty()){
+        return;
+    }
+    // 1. Identify activated and inactivated leaves(status changes)
+    List<Leave__c> activatedLeaves  =new List<Leave__c>();
+    List<Leave__c> inactivatedLeaves=new List<Leave__c>();
+    for(Leave__c newLeave:newLeaves){
+        Leave__c oldLeave=oldMap.get(newLeave.Id);
+        if(oldLeave == null){
+            continue;
+        }
+        if(newLeave.Status__c == 'Active' && oldLeave.Status__c != 'Active'){
+            activatedLeaves.add(newLeave);
+        } else if(newLeave.Status__c == 'Inactive' && oldLeave.Status__c != 'Inactive'){
+            inactivatedLeaves.add(newLeave);
+        }
+    }
+    if(activatedLeaves.isEmpty() && inactivatedLeaves.isEmpty()){
+        return;
+    }
+    // 2. Collect all involved owner Ids(both Active and Inactive)
+    Set<Id> activeOwnerIds  =new Set<Id>();
+    Set<Id> inactiveOwnerIds=new Set<Id>();
+    for(Leave__c leave:activatedLeaves){
+        if(leave.OwnerId != null){
+            activeOwnerIds.add(leave.OwnerId);
+        }
+    }
+    for(Leave__c leave:inactivatedLeaves){
+        if(leave.OwnerId != null){
+            inactiveOwnerIds.add(leave.OwnerId);
+        }
+    }
+    Set<Id> allOwnerIds=new Set<Id>();
+    allOwnerIds.addAll(activeOwnerIds);
+    allOwnerIds.addAll(inactiveOwnerIds);
+    if(allOwnerIds.isEmpty()){
+        return;
+    }
+    // 3. User queries – single query for all owners and their delegates to handle circular delegations
+    Map<Id,User> allUserMap = getUserMap(allOwnerIds);
+    // 3.2 Build owner -> delegate map from allUserMap
+    Map<Id,Id> ownerToDelegateMap = new Map<Id,Id>();
+    Set<Id> delegateIds = new Set<Id>();
+    for (User u : allUserMap.values()) {
+        if (allOwnerIds.contains(u.Id)) {
+            ownerToDelegateMap.put(u.Id, u.DelegatedApproverId);
+            if (u.DelegatedApproverId != null) {
+                delegateIds.add(u.DelegatedApproverId);
             }
         }
-       if(!activatedLeaves.isEmpty()){
-        Set<Id> ownerIds=new Set<Id>();
-        for(Leave__c leave:activatedLeaves){
-            ownerIds.add(leave.OwnerId);
+    // 4. SINGLE Case query – via getCases
+    Set<Id> caseOwnerIds=new Set<Id>();
+    caseOwnerIds.addAll(allOwnerIds);
+    caseOwnerIds.addAll(delegateIds);
+    List<Case> allOpenCases=getCases(caseOwnerIds,null);
+    // Group all cases by current owner
+    Map<Id,List<Case>> ownerToCasesMap=new Map<Id,List<Case>>();
+    for(Case c:allOpenCases){
+        List<Case> bucket=ownerToCasesMap.get(c.OwnerId);
+        if(bucket == null){
+            bucket=new List<Case>();
+            ownerToCasesMap.put(c.OwnerId,bucket);
         }
-        List<Case> openCases=getCases(ownerIds,null);
-        Map<Id,List<Case>> ownerToCasesMap=new Map<Id,List<Case>>();
-        for(Case c:openCases){
-            if(!ownerToCasesMap.containsKey(c.OwnerId)){
-                ownerToCasesMap.put(c.OwnerId,new List<Case>());
-            }
-            ownerToCasesMap.get(c.OwnerId).add(c);
-        }
-        List<Case> casesToUpdate=new List<Case>();
-        List<Case> casesToAddToQueue=new List<Case>();
-        Map<Id,List<Case>> delegatedToCasesMap=new Map<Id,List<Case>>();
-        Map<Id,User> ownerToDelegatedUserMap=getUserMap(ownerIds);
-        for(Leave__c leave:activatedLeaves){
-            List<Case> userCases=ownerToCasesMap.get(leave.OwnerId);
-            if(userCases==null||userCases.isEmpty()){
+        bucket.add(c);
+    }
+    // 5. Structures for updates and emails
+    List<Case> allCasesToUpdate=new List<Case>();
+    // For Active: delegateId -> list of cases newly assigned
+    Map<Id,List<Case>> delegateToCasesActivatedMap=new Map<Id,List<Case>>();
+    // For Inactive: originalOwnerId -> list of cases returned
+    Map<Id,List<Case>> originalOwnerToCasesReturnedMap=new Map<Id,List<Case>>();
+    // For Active(no delegate): cases that must go to Case_Queue
+    List<Case> casesToMoveToQueue=new List<Case>();
+    // 6. Scenario Owner goes Active(delegate or queue)
+    if(!activeOwnerIds.isEmpty()){
+        for(Id ownerId:activeOwnerIds){
+            List<Case> userCases=ownerToCasesMap.get(ownerId);
+            if(userCases == null || userCases.isEmpty()){
                 continue;
             }
-            User ownerUser=ownerToDelegatedUserMap.get(leave.OwnerId);
-            Id delegatedId=(ownerUser!=null) ? ownerUser.DelegatedApproverId:null;
-            if(delegatedId!=null){
-                List<Case> casesToReassignForLeave=new List<Case>();
-                for(Case c:userCases){
-                    casesToReassignForLeave.add(c);
+            Id delegateId=ownerToDelegateMap.get(ownerId);
+            if(delegateId != null){
+                // Reassign all of this owner's cases to delegate in memory
+                List<Case> casesForThisOwner=new List<Case>(userCases);
+                reassignCases(casesForThisOwner,delegateId,ownerId,true);
+                allCasesToUpdate.addAll(casesForThisOwner);
+                List<Case> delegateBucket=delegateToCasesActivatedMap.get(delegateId);
+                if(delegateBucket == null){
+                    delegateBucket=new List<Case>();
+                    delegateToCasesActivatedMap.put(delegateId,delegateBucket);
                 }
-                reassignCases(casesToReassignForLeave,delegatedId,leave.OwnerId,true);
-                casesToUpdate.addAll(casesToReassignForLeave);
-                if(!delegatedToCasesMap.containsKey(delegatedId)){
-                    delegatedToCasesMap.put(delegatedId,new List<Case>());
-                }
-                delegatedToCasesMap.get(delegatedId).addAll(casesToReassignForLeave);
-            }else{
-                for(Case c:userCases){
-                    casesToAddToQueue.add(c);
-                }
+                delegateBucket.addAll(casesForThisOwner);
+            } else{
+                // No delegate: these will go to queue
+                casesToMoveToQueue.addAll(userCases);
             }
         }
-        if(!casesToAddToQueue.isEmpty()){
-            Id caseQueueId=[
-                SELECT
-                    Id
-                FROM 
-                    Group
-                WHERE
-                    Name='Case_Queue'
-                LIMIT 1
-            ].Id;
+    }
+    // 7. Scenario – Owner goes Inactive(return delegated cases)
+    if(!inactiveOwnerIds.isEmpty()){
+        for(Id originalOwnerId:inactiveOwnerIds){
+            Id delegateId=ownerToDelegateMap.get(originalOwnerId);
+            if(delegateId == null){
+                continue;
+            }
+            List<Case> delegateCases=ownerToCasesMap.get(delegateId);
+            if(delegateCases == null || delegateCases.isEmpty()){
+                continue;
+            }
+            List<Case> casesForThisOwner=new List<Case>();
+            for(Case c:delegateCases){
+                // Only pick cases that were delegated from this owner
+                if(c.Is_delegated__c == true && c.Orginal_Owner_Id__c == originalOwnerId){
+                    casesForThisOwner.add(c);
+                }
+            }
+            if(casesForThisOwner.isEmpty()){
+                continue;
+            }
+            // Reassign back to original owner in-memory
+            reassignCases(casesForThisOwner,originalOwnerId,null,false);
+            allCasesToUpdate.addAll(casesForThisOwner);
+            List<Case> originalBucket=originalOwnerToCasesReturnedMap.get(originalOwnerId);
+            if(originalBucket == null){
+                originalBucket=new List<Case>();
+                originalOwnerToCasesReturnedMap.put(originalOwnerId,originalBucket);
+            }
+            originalBucket.addAll(casesForThisOwner);
+        }
+    }
+    // 8. Cases with no delegate → Case_Queue
+    if(!casesToMoveToQueue.isEmpty()){
+        Id caseQueueId=[
+            SELECT Id
+            FROM Group
+            WHERE Name='Case_Queue'
+            LIMIT 1
+        ].Id;
+        for(Case c:casesToMoveToQueue){
+            c.OwnerId            =caseQueueId;
+            c.Is_delegated__c    =false;
+            c.Orginal_Owner_Id__c=null;
+        }
+        allCasesToUpdate.addAll(casesToMoveToQueue);
+    }
+    // Single bulk DML for all case changes
+    if(!allCasesToUpdate.isEmpty()){
+        Database.update(allCasesToUpdate,false);
+    }
+    // 10. Emails – now both owners and delegates are in allUserMap
+    //  Emails to delegates for newly assigned cases(Active)
+    for(Id delegateId:delegateToCasesActivatedMap.keySet()){
+        User delegatedUser=allUserMap.get(delegateId);
+        if(delegatedUser == null || String.isBlank(delegatedUser.Email)){
+            continue;
+        }
+        List<Case> casesForDelegate=delegateToCasesActivatedMap.get(delegateId);
+        if(casesForDelegate == null || casesForDelegate.isEmpty()){
+            continue;
+        }
+        String subject='Reassigned Cases Summary';
+        String body =
+            'Dear ' + delegatedUser.Name + ',\n\n' +
+            'The following cases have been reassigned to you as the delegated user for an employee on leave:\n\n' +
+            buildCaseSummaryLines(casesForDelegate) +
+            '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
 
-            for(Case c:casesToAddToQueue){
-                c.OwnerId=caseQueueId;
-            }
-            Database.update(casesToAddToQueue,false);
+        sendEmail(delegatedUser.Email,subject,body);
+    }
+    // Emails to original owners(and delegates) for returned cases(Inactive)
+    for(Id originalOwnerId:originalOwnerToCasesReturnedMap.keySet()){
+        List<Case> returnedCases=originalOwnerToCasesReturnedMap.get(originalOwnerId);
+        if(returnedCases == null || returnedCases.isEmpty()){
+            continue;
         }
-        List<Messaging.SingleEmailMessage> emails=new List<Messaging.SingleEmailMessage>();
-        Set<Id> delegatedIds=delegatedToCasesMap.keySet();
-        if(!delegatedIds.isEmpty()){
-            Map<Id,User> userMap=getUserMap(delegatedIds);
-            for(Id delegatedId:delegatedIds){
-                User delegatedUser=userMap.get(delegatedId);
-                if(delegatedUser!=null&&delegatedUser.Email!=null){
-                    List<Case> reassignedCases=delegatedToCasesMap.get(delegatedId);
-                    String subject='Reassigned Cases Summary';
-                    String body='Dear '+delegatedUser.Name+',\n\n' +
-                                'The following cases have been reassigned to you as the delegated user for an employee on leave:\n\n';
-                    for(Case c:reassignedCases){
-                        body+='Case Number: '+c.CaseNumber+'\n';
-                        body+='Subject: '+c.Subject+'\n';
-                        body+='Status: '+c.Status+'\n';
-                        body+='Priority: '+c.Priority+'\n';
-                        body+='Type: '+c.Type+'\n\n';
-                    }
-                    body+='\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
-                    sendEmail(delegatedUser.Email,subject,body);
-                }
-            }
+        User originalUser=allUserMap.get(originalOwnerId);
+        Id delegateId    =ownerToDelegateMap.get(originalOwnerId);
+        User delegatedUser=(delegateId != null) ? allUserMap.get(delegateId):null;
+        String caseLines=buildCaseSummaryLines(returnedCases);
+        if(originalUser != null && !String.isBlank(originalUser.Email)){
+            String subjectOwner='Cases Reassigned Back to You';
+            String bodyOwner =
+                'Dear ' + originalUser.Name + ',\n\n' +
+                'Your leave has ended,and the following cases have been reassigned back to you:\n\n' +
+                caseLines +
+                '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
+
+            sendEmail(originalUser.Email,subjectOwner,bodyOwner);
+        }
+        // Email to delegate
+        if(delegatedUser != null && !String.isBlank(delegatedUser.Email)){
+            String subjectDelegate='Cases Reassigned Back to Original Owner';
+            String bodyDelegate =
+                'Dear ' + delegatedUser.Name + ',\n\n' +
+                'The leave period has ended,and the following cases have been reassigned back to the original owner:\n\n' +
+                caseLines +
+                '\nBest regards,\nLeave Management System';
+            sendEmail(delegatedUser.Email,subjectDelegate,bodyDelegate);
         }
     }
-        if(!inactivatedLeaves.isEmpty()){
-            Set<Id> ownerIds=new Set<Id>();
-            for(Leave__c leave:inactivatedLeaves){
-                ownerIds.add(leave.OwnerId);
-            }
-            Map<Id,Id> userIdToDelegatedApproverIdMap=new Map<Id,Id>();
-            Map<Id,User> userMap=getUserMap(ownerIds);
-            for(User u:userMap.values()){
-                userIdToDelegatedApproverIdMap.put(u.Id,u.DelegatedApproverId);
-            }
-            Set<Id> delegatedIds=new Set<Id>();
-            for(Id delegatedId:userIdToDelegatedApproverIdMap.values()){
-                if(delegatedId!=null){
-                    delegatedIds.add(delegatedId);
-                }
-            }
-            List<Case> delegatedCases=getCases(delegatedIds,true);
-            Map<Id,List<Case>> delegatedToCasesMap=new Map<Id,List<Case>>();
-            for(Case c:delegatedCases){
-                if(!delegatedToCasesMap.containsKey(c.OwnerId)){
-                    delegatedToCasesMap.put(c.OwnerId,new List<Case>());
-                }
-                delegatedToCasesMap.get(c.OwnerId).add(c);
-            }
-            List<Case> casesToReassign=new List<Case>();
-            Map<Id,List<Case>> originalToCasesMap=new Map<Id,List<Case>>();
-            for(Leave__c leave:inactivatedLeaves){
-                Id delegatedApproverId=userIdToDelegatedApproverIdMap.get(leave.OwnerId);
-                List<Case> userCases=delegatedToCasesMap.get(delegatedApproverId);
-                if(userCases!=null){
-                    List<Case> casesToReassignForLeave=new List<Case>();
-                    for(Case c:userCases){
-                        if(c.Orginal_Owner_Id__c==leave.OwnerId){
-                            casesToReassignForLeave.add(c);
-                        }
-                    }
-                    reassignCases(casesToReassignForLeave,leave.OwnerId,null,false);
-                    casesToReassign.addAll(casesToReassignForLeave);
-                    if(!originalToCasesMap.containsKey(leave.OwnerId)){
-                        originalToCasesMap.put(leave.OwnerId,new List<Case>());
-                    }
-                    originalToCasesMap.get(leave.OwnerId).addAll(casesToReassignForLeave);
-                }
-            }
-            List<Messaging.SingleEmailMessage> emails=new List<Messaging.SingleEmailMessage>();
-            Set<Id> allUserIds=new Set<Id>();
-            for(Leave__c leave:inactivatedLeaves){
-                allUserIds.add(leave.OwnerId);
-            }
-            Map<Id,Id> originalOwnerToDelegatedApproverMap=new Map<Id,Id>();
-            Map<Id,User> ownerUserMap=getUserMap(allUserIds);
-            for(User u:ownerUserMap.values()){
-                originalOwnerToDelegatedApproverMap.put(u.Id,u.DelegatedApproverId);
-            }
-            for(Leave__c leave:inactivatedLeaves){
-                Id delegatedApproverId=originalOwnerToDelegatedApproverMap.get(leave.OwnerId);
-                if(delegatedApproverId!=null){
-                    allUserIds.add(delegatedApproverId);
-                }
-            }
-            Map<Id,User> fullUserMap=getUserMap(allUserIds);
-            for(Leave__c leave:inactivatedLeaves){
-                User originalUser=fullUserMap.get(leave.OwnerId);
-                Id delegatedApproverId=originalOwnerToDelegatedApproverMap.get(leave.OwnerId);
-                User delegatedUser=delegatedApproverId!=null ? fullUserMap.get(delegatedApproverId):null;
-                List<Case> reassignedCases=originalToCasesMap.get(leave.OwnerId);
-                if(reassignedCases!=null&&!reassignedCases.isEmpty()){
-                    if(originalUser!=null&&originalUser.Email!=null){
-                        String subject='Cases Reassigned Back to You';
-                        String body='Dear '+originalUser.Name+',\n\nYour leave has ended,and the following cases have been reassigned back to you:\n\n';
-                        for(Case c:reassignedCases){
-                            body+='Case Number: '+c.CaseNumber+'\n';
-                            body+='Subject: '+c.Subject+'\n';
-                            body+='Status: '+c.Status+'\n';
-                            body+='Priority: '+c.Priority+'\n';
-                            body+='Type: '+c.Type+'\n\n';
-                        }
-                        body+='\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
-                        sendEmail(originalUser.Email,subject,body);
-                    }
-                    if(delegatedUser!=null&&delegatedUser.Email!=null){
-                        String subject='Cases Reassigned Back to Original Owner';
-                        String body='Dear '+delegatedUser.Name+',\n\nThe leave period has ended,and the following cases have been reassigned back to the original owner:\n\n';
-                        for(Case c:reassignedCases){
-                            body+='Case Number: '+c.CaseNumber+'\n';
-                            body+='Subject: '+c.Subject+'\n';
-                            body+='Status: '+c.Status+'\n';
-                            body+='Priority: '+c.Priority+'\n';
-                            body+='Type: '+c.Type+'\n\n';
-                        }
-                        body+='\nBest regards,\nLeave Management System';
-                        sendEmail(delegatedUser.Email,subject,body);
-                    }
-                }
-            }
-            
-        }
-    }
+}
 }

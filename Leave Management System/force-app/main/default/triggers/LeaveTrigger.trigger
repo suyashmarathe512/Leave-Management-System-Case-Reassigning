@@ -14,5 +14,5 @@ trigger LeaveTrigger on Leave__c (before insert,before update,after insert,after
         if(Trigger.isUpdate){
             LeaveTriggerHandler.handleAfterUpdate(Trigger.new,Trigger.oldMap);
         }
-    }
+     }
 }
