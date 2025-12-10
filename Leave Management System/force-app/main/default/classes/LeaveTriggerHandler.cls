@@ -1,35 +1,45 @@
 /********************************************************************************************************************
- * @Author:          CRM Team Innovation
- * @ClassName:        LeaveTriggerHandler
- * @Description:      Trigger handler class for Leave__c object to manage leave applications and case reassignments
+*@Author:          CRM Team Innovation
+*@ClassName:        LeaveTriggerHandler
+*@Description:      Trigger handler class for Leave__c object to manage leave applications and case reassignments
  **********************************************************************************************************************/
 public with sharing class LeaveTriggerHandler{
     /********************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      calculateBusinessDays
-     * @param:         startDate-Start date of the leave
-     * @param:         endDate-End date of the leave
-     * @Description:    Helper method to calculate business days between two dates
+    *@Author:          CRM Team Innovation
+    *@methodName:      calculateBusinessDays
+    *@param:         startDate-Start date of the leave
+    *@param:         endDate-End date of the leave
+    *@Description:    Helper method to calculate business days between two dates
      **********************************************************************************************************************/
-    private static Integer calculateBusinessDays(Date startDate,Date endDate){
-        Integer businessDays=0;
-        Date current=startDate;
-        while(current <= endDate){
-            DateTime dt=DateTime.newInstance(current,Time.newInstance(0,0,0,0));
-            String dayOfWeek=dt.format('EEEE');
-            if(dayOfWeek!='Saturday'&&dayOfWeek!='Sunday'){
-                businessDays++;
-            }
-            current=current.addDays(1);
-        }
-        return businessDays;
+   public static Integer calculateBusinessDays(Date startDate,Date endDate){
+        BusinessHours defaultHours=[
+            SELECT 
+                Id 
+            FROM 
+                BusinessHours
+            WHERE 
+                IsDefault=true 
+            LIMIT 1
+        ];
+        DateTime startDateTime=DateTime.newInstanceGMT(
+            startDate.year(),startDate.month(),startDate.day(),0,0,0
+        );
+        DateTime endDateTime=DateTime.newInstanceGMT(
+            endDate.year(),endDate.month(),endDate.day(),0,0,0
+        );
+        Long millisecondsDiff =
+            BusinessHours.diff(defaultHours.Id,startDateTime,endDateTime);
+
+        Decimal businessHours=millisecondsDiff / (1000.0*60.0*60.0);
+        Decimal businessDays=businessHours / 24.0;
+        return businessDays.intValue();
     }
     /********************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      checkForOverlappingDates
-     * @param:         newLeave-Leave__c record being validated
-     * @param:         existingLeaves-List of existing Leave__c records to compare against
-     * @Description:     Helper method to check if a new leave record overlaps with existing ones
+    *@Author:          CRM Team Innovation
+    *@methodName:      checkForOverlappingDates
+    *@param:         newLeave-Leave__c record being validated
+    *@param:         existingLeaves-List of existing Leave__c records to compare against
+    *@Description:     Helper method to check if a new leave record overlaps with existing ones
      **********************************************************************************************************************/
     private static Boolean checkForOverlappingDates(Leave__c newLeave,List<Leave__c> existingLeaves){
         if(newLeave.Start_Date__c==null||newLeave.End_Date__c==null){
@@ -49,12 +59,12 @@ public with sharing class LeaveTriggerHandler{
         return false;
     }
     /****************************************************************************************************************************
-    * @Author:         CRM Team Innovation
-    * @methodName:     sendEmail
-    * @param:        toAddress - Recipient email address
-    * @param:        subject - Email subject
-    * @param:        body - Email body content
-    * @Description:    Helper method to send email notifications
+*@Author:         CRM Team Innovation
+*@methodName:     sendEmail
+*@param:        toAddress - Recipient email address
+*@param:        subject - Email subject
+*@param:        body - Email body content
+*@Description:    Helper method to send email notifications
     *****************************************************************************************************************************/
     private static void sendEmail(String toAddress,String subject,String body){
         if(String.isBlank(toAddress)||String.isBlank(subject)||String.isBlank(body)){
@@ -70,10 +80,10 @@ public with sharing class LeaveTriggerHandler{
         }
     }
     /********************************************************************************************************************
-    * @Author:        CRM Team Innovation
-    * @methodName:    handleBeforeInsertUpdate
-    * @param:        newLeaves-List of Leave__c records before insert/update
-    * @Description:    Validate leave applications and adjust leave types based on balances before insert/update
+*@Author:        CRM Team Innovation
+*@methodName:    handleBeforeInsertUpdate
+*@param:        newLeaves-List of Leave__c records before insert/update
+*@Description:    Validate leave applications and adjust leave types based on balances before insert/update
     **********************************************************************************************************************/
     public static void handleBeforeInsertUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
         Set<Id> ownerIds=new Set<Id>();
@@ -260,10 +270,10 @@ public with sharing class LeaveTriggerHandler{
         }
     }
     /********************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      submitNewLeavesForApproval
-     * @param:         newLeaves-List of newly inserted Leave__c records
-     * @Description:     Submit new leave records for approval if status is 'Pending'
+    *@Author:          CRM Team Innovation
+    *@methodName:      submitNewLeavesForApproval
+    *@param:         newLeaves-List of newly inserted Leave__c records
+    *@Description:     Submit new leave records for approval if status is 'Pending'
      **********************************************************************************************************************/
     private static Boolean isAlreadyRunning=false;
     public static void submitNewLeavesForApproval(List<Leave__c> newLeaves){
@@ -284,10 +294,10 @@ public with sharing class LeaveTriggerHandler{
         }
     }
     /************************************************************************************************************************
-     * @Author:          CRM Team Innovation
-     * @methodName:      getUserMap
-     * @param:         userIds-Set of User Ids to query
-     * @Description:     Helper method to query User records and return a map
+    *@Author:          CRM Team Innovation
+    *@methodName:      getUserMap
+    *@param:         userIds-Set of User Ids to query
+    *@Description:     Helper method to query User records and return a map
      **************************************************************************************************************************/
    private static Map<Id,User> getUserMap(Set<Id> ownerIds){
     return new Map<Id,User>([
@@ -300,11 +310,11 @@ public with sharing class LeaveTriggerHandler{
     ]);
 }
 /************************************************************************************************************************
- * @Author:      CRM Team Innovation
- * @methodName:  getCases
- * @param:       ownerIds-Set of Owner Ids to query
- * @param:       isDelegated-Boolean to filter by Is_delegated__c(null for no filter)
- * @Description: Helper method to query Case records and return a list
+*@Author:      CRM Team Innovation
+*@methodName:  getCases
+*@param:       ownerIds-Set of Owner Ids to query
+*@param:       isDelegated-Boolean to filter by Is_delegated__c(null for no filter)
+*@Description: Helper method to query Case records and return a list
  **************************************************************************************************************************/
 private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
     return [
@@ -314,14 +324,14 @@ private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
     ];
 }
 /************************************************************************************************************************
- * @Author:      CRM Team Innovation
- * @methodName:  reassignCases
- * @param:       casesToUpdate-List of Case records to update
- * @param:       newOwner-New Owner Id to assign
- * @param:       originalOwner-Original Owner Id(can be null)
- * @param:       isDelegated-Boolean flag for Is_delegated__c
- * @Description: Helper method to reassign cases by setting owner and delegation fields.
- *               No DML here. Caller performs bulk DML once.
+*@Author:      CRM Team Innovation
+*@methodName:  reassignCases
+*@param:       casesToUpdate-List of Case records to update
+*@param:       newOwner-New Owner Id to assign
+*@param:       originalOwner-Original Owner Id(can be null)
+*@param:       isDelegated-Boolean flag for Is_delegated__c
+*@Description: Helper method to reassign cases by setting owner and delegation fields.
+*              No DML here. Caller performs bulk DML once.
  **************************************************************************************************************************/
 private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id originalOwner,Boolean isDelegated){
     if(casesToUpdate==null||casesToUpdate.isEmpty()){
@@ -334,9 +344,9 @@ private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id origin
     }
 }
 /************************************************************************************************************************
- * @Author:      CRM Team Innovation
- * @methodName:  buildCaseSummaryLines
- * @Description: Common helper to build "case details" text block for emails
+*@Author:      CRM Team Innovation
+*@methodName:  buildCaseSummaryLines
+*@Description: Common helper to build "case details" text block for emails
  **************************************************************************************************************************/
 private static String buildCaseSummaryLines(List<Case> casesList){
     String body='';
@@ -353,14 +363,14 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     return body;
 }
 /************************************************************************************************************************
- * @Author:      CRM Team Innovation
- * @methodName:  handleAfterUpdate
- * @param:       newLeaves-List of Leave__c records after update
- * @param:       oldMap-Map of Leave__c records before update
- * @Description: Handle case reassignment when leave status changes to Active or Inactive
- *               - 1 User query total
- *               - 1 Case query total(via getCases)
- *               - All logic driven from maps
+*@Author:      CRM Team Innovation
+*@methodName:  handleAfterUpdate
+*@param:       newLeaves-List of Leave__c records after update
+*@param:       oldMap-Map of Leave__c records before update
+*@Description: Handle case reassignment when leave status changes to Active or Inactive
+*              - 1 User query total
+*              - 1 Case query total(via getCases)
+*              - All logic driven from maps
  **************************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
         if(newLeaves==null||newLeaves.isEmpty()||oldMap==null||oldMap.isEmpty()){
@@ -409,7 +419,7 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     Set<Id> delegateIds=new Set<Id>();
     for (User u : allUserMap.values()){
         if (allOwnerIds.contains(u.Id)){
-            ownerToDelegateMap.put(u.Id, u.DelegatedApproverId);
+            ownerToDelegateMap.put(u.Id,u.DelegatedApproverId);
             if (u.DelegatedApproverId!=null){
                 delegateIds.add(u.DelegatedApproverId);
             }
