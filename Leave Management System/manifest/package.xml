@@ -1,9 +1,38 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
 	<types>
+		<members>Leave_Application</members>
+		<name>CustomApplication</name>
+	</types>
+	<types>
+		<members>Case.Is_delegated__c</members>
+		<members>Case.Orginal_Owner_Id__c</members>
+		<name>CustomField</name>
+	</types>
+	<types>
 		<members>Leave_Balance__c</members>
 		<members>Leave__c</members>
 		<name>CustomObject</name>
+	</types>
+	<types>
+		<members>Leave_Portal</members>
+		<members>Leave__c</members>
+		<name>CustomTab</name>
+	</types>
+	<types>
+		<members>Update_Status_Schedule_path_flow</members>
+		<name>Flow</name>
+	</types>
+	<types>
+		<members>Leave_Object_access</members>
+		<name>PermissionSet</name>
+	</types>
+	<types>
+		<members>Leave__c.EndDate_should_be_greater_than_start</members>
+		<members>Leave__c.New_record_then_status_should_be_pending</members>
+		<members>Leave__c.Restrict_User_From_editing_approved_leav</members>
+		<members>Leave__c.StartDate_should_be_greater_than_today</members>
+		<name>ValidationRule</name>
 	</types>
 	<version>65.0</version>
 </Package>

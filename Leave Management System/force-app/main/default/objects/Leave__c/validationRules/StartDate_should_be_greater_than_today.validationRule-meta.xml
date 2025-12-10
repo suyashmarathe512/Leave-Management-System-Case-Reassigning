@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>StartDate_should_be_greater_than_today</fullName>
+    <active>true</active>
+    <description>It validated if the start date of leave is greater than Today or not.</description>
+    <errorConditionFormula>ISNEW() &amp;&amp;
+Start_Date__c &lt; TODAY()</errorConditionFormula>
+    <errorDisplayField>Start_Date__c</errorDisplayField>
+    <errorMessage>The Start Date should be greater than today&apos;s date.</errorMessage>
+</ValidationRule>

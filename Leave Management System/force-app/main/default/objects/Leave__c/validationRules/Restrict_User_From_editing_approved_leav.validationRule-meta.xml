@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Restrict_User_From_editing_approved_leav</fullName>
+    <active>true</active>
+    <description>Restrict_User_From_editing_approved_leave record</description>
+    <errorConditionFormula>AND(
+    ISPICKVAL(Status__c, &quot;Approved&quot;),
+    NOT($Profile.Name = &quot;System Administrator&quot;)
+)</errorConditionFormula>
+    <errorMessage>Approved leave is not editable, Contact Administrator.</errorMessage>
+</ValidationRule>

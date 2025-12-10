@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>New_record_then_status_should_be_pending</fullName>
+    <active>true</active>
+    <description>New record should always have the status has pending.</description>
+    <errorConditionFormula>ISNEW() &amp;&amp; TEXT(Status__c) &lt;&gt; &quot;Pending&quot;</errorConditionFormula>
+    <errorDisplayField>Status__c</errorDisplayField>
+    <errorMessage>New leave record&apos;s status must be pending first.</errorMessage>
+</ValidationRule>
