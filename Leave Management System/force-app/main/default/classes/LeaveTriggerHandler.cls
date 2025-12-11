@@ -202,10 +202,6 @@ public with sharing class LeaveTriggerHandler{
             }
             if(leave.Start_Date__c!=null&&leave.End_Date__c!=null){
                 Integer numberOfDays=calculateBusinessDays(leave.Start_Date__c,leave.End_Date__c);
-                if(numberOfDays <= 0){
-                    leave.addError('Invalid date range. End Date must be on or after Start Date.');
-                    continue;
-                }
                 if(leave.Leave_Type__c=='Earned_Leave'||leave.Leave_Type__c=='Sick_Leave'){
                     Leave_Balance__c balance=balanceMap.get(leave.OwnerId);
                     if(balance!=null){

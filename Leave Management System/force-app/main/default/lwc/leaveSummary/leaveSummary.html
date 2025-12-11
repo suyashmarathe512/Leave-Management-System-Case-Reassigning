@@ -1,94 +1,145 @@
 <template>
-    <lightning-card title="My Leave Balances" class="lm-card">
-        <div class="slds-p-around_medium slds-grid slds-wrap balance-row">
-            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
-                <div class="balance-card-inner">
-                    <div class="icon-wrapper">
-                        <lightning-icon icon-name="utility:calendar" size="small"></lightning-icon>
-                    </div>
-                    <div class="balance-text">
-                        <div class="balance-label">Balance This Year</div>
-                        <div class="balance-value">
-                            <span class="balance-number">{earned}</span>
-                            <span class="balance-unit">Earned</span>
-                        </div>
-                        <div class="balance-value">
-                            <span class="balance-number">{sick}</span>
-                            <span class="balance-unit">Sick</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- Booked Leaves card -->
-            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
-                <div class="balance-card-inner">
-                    <div class="icon-wrapper">
-                        <lightning-icon icon-name="utility:check" size="small"></lightning-icon>
-                    </div>
-                    <div class="balance-text">
-                        <div class="balance-label">Booked Leaves</div>
-                        <div class="balance-value">
-                            <span class="balance-number">{bookedEarned}</span>
-                            <span class="balance-unit">Earned</span>
-                        </div>
-                        <div class="balance-value">
-                            <span class="balance-number">{bookedSick}</span>
-                            <span class="balance-unit">Sick</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- Available Leaves card -->
-            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
-                <div class="balance-card-inner">
-                    <div class="icon-wrapper">
-                        <lightning-icon icon-name="utility:clock" size="small"></lightning-icon>
-                    </div>
-                    <div class="balance-text">
-                        <div class="balance-label">Available Leaves</div>
-                        <div class="balance-value">
-                            <span class="balance-number">{availableEarned}</span>
-                            <span class="balance-unit">Earned</span>
-                        </div>
-                        <div class="balance-value">
-                            <span class="balance-number">{availableSick}</span>
-                            <span class="balance-unit">Sick</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- Unpaid Leave card -->
-            <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
-                <div class="balance-card-inner">
-                    <div class="icon-wrapper">
-                        <lightning-icon icon-name="utility:currency" size="small"></lightning-icon>
-                    </div>
-                    <div class="balance-text">
-                        <div class="balance-label">Unpaid Leave</div>
-                        <div class="balance-value">
-                            <span class="balance-number">{bookedUnpaid}</span>
-                            <span class="balance-unit">Days Booked</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- SIDEBAR CONTAINER -->
+<div class="sidebar-container">
+    <!-- Closed sidebar button -->
+    <div class="sidebar-toggle-button" onclick={toggleSidebar} title="My Open Cases" aria-label="My Open Cases" help ="My Open Cases">
+        <lightning-icon icon-name="standard:case" size="small"></lightning-icon>
+    </div>
+    <!-- Expanding Sidebar Drawer -->
+    <aside if:true={isSidebarOpen} class="sidebar-expanded">
+        <div class="drawer-header">
+            <h3>My Open Cases</h3>
+            <lightning-button-icon icon-name="utility:close" onclick={closeSidebar}></lightning-button-icon>
         </div>
-    </lightning-card>
-    <!-- Leave Requests table-->
-    <lightning-card title="Leaves" class="lm-card">
-        <div slot="actions">
-            <lightning-button-icon
-                icon-name="utility:add"
-                alternative-text="Apply Leave"
-                variant="brand"
-                onclick={handleApplyLeave}>
-            </lightning-button-icon>
+        <div class="drawer-body">
+            <!-- OPEN CASES -->
+            <div class="drawer-section">
+                <template if:true={formattedCases}>
+                    <template if:true={formattedCases.length}>
+                        <template for:each={formattedCases} for:item="c">
+                            <div class="case-item" key={c.Id} onclick={navigateToRecord} data-id={c.Id}>
+                                <div class="item-title">{c.Subject}</div>
+                                <div class="item-meta">{c.CaseNumber} • {c.Status}</div>
+                            </div>
+                        </template>
+                    </template>
+                </template>
+                <template if:true={casesError}>
+                    <div class="empty">Error loading cases</div>
+                </template>
+            </div>
+            <!-- PAST LEAVES -->
+            <div class="drawer-section divider">
+                <h3><strong> Past Leaves</strong> </h3>
+                <template if:true={formattedPastLeaves}>
+                    <template if:true={formattedPastLeaves.length}>
+                        <template for:each={formattedPastLeaves} for:item="p">
+                            <div class="case-item small" key={p.Id}>
+                                <div class="item-title">{p.Name}</div>
+                                <div class="item-meta">{p._startDate} → {p._endDate} • {p.Status__c}</div>
+                            </div>
+                        </template>
+                    </template>
+                </template>
+            </div>
+
         </div>
-        <lightning-datatable
-            key-field="Id"
-            data={leaves.data}
-            columns={columns}
-            hide-checkbox-column>
-        </lightning-datatable>
-    </lightning-card>
+    </aside>
+</div>
+    <div class={contentClass}>
+        <lightning-card title="My Leave Balances" class="lm-card">
+            <div class="slds-p-around_medium slds-grid slds-wrap balance-row">
+                <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
+                    <div class="balance-card-inner">
+                        <div class="icon-wrapper">
+                            <lightning-icon icon-name="utility:calendar" size="small"></lightning-icon>
+                        </div>
+                        <div class="balance-text">
+                            <div class="balance-label">Balance This Year</div>
+                            <div class="balance-value">
+                                <span class="balance-number">{earned}</span>
+                                <span class="balance-unit">Earned</span>
+                            </div>
+                            <div class="balance-value">
+                                <span class="balance-number">{sick}</span>
+                                <span class="balance-unit">Sick</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Booked Leaves card -->
+                <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
+                    <div class="balance-card-inner">
+                        <div class="icon-wrapper">
+                            <lightning-icon icon-name="utility:check" size="small"></lightning-icon>
+                        </div>
+                        <div class="balance-text">
+                            <div class="balance-label">Booked Leaves</div>
+                            <div class="balance-value">
+                                <span class="balance-number">{bookedEarned}</span>
+                                <span class="balance-unit">Earned</span>
+                            </div>
+                            <div class="balance-value">
+                                <span class="balance-number">{bookedSick}</span>
+                                <span class="balance-unit">Sick</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Available Leaves card -->
+                <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
+                    <div class="balance-card-inner">
+                        <div class="icon-wrapper">
+                            <lightning-icon icon-name="utility:clock" size="small"></lightning-icon>
+                        </div>
+                        <div class="balance-text">
+                            <div class="balance-label">Available Leaves</div>
+                            <div class="balance-value">
+                                <span class="balance-number">{availableEarned}</span>
+                                <span class="balance-unit">Earned</span>
+                            </div>
+                            <div class="balance-value">
+                                <span class="balance-number">{availableSick}</span>
+                                <span class="balance-unit">Sick</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Unpaid Leave card -->
+                <div class="slds-col slds-size_1-of-2 slds-large-size_1-of-4 balance-card">
+                    <div class="balance-card-inner">
+                        <div class="icon-wrapper">
+                            <lightning-icon icon-name="utility:currency" size="small"></lightning-icon>
+                        </div>
+                        <div class="balance-text">
+                            <div class="balance-label">Unpaid Leave</div>
+                            <div class="balance-value">
+                                <span class="balance-number">{bookedUnpaid}</span>
+                                <span class="balance-unit">Days Booked</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </lightning-card>
+        <!-- Leave Requests table-->
+        <lightning-card title="Leaves" class="lm-card">
+            <div slot="actions">
+                <lightning-button-icon
+                    icon-name="utility:add"
+                    alternative-text="Apply Leave"
+                    variant="brand"
+                    onclick={handleApplyLeave}>
+                </lightning-button-icon>
+            </div>
+            <div class="table-container">
+                <lightning-datatable
+                    key-field="Id"
+                    data={formattedLeaves}
+                    columns={columns}
+                    hide-checkbox-column>
+                </lightning-datatable>
+            </div>
+        </lightning-card>
+    </div>
 </template>

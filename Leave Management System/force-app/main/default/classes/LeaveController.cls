@@ -65,17 +65,50 @@ public with sharing class LeaveController{
     @AuraEnabled(cacheable=true)
     public static List<Leave__c> getMyLeaves(){
         return [
-            SELECT Id,
-                   Name,
-                   Start_Date__c,
-                   End_Date__c,
-                   Leave_Type__c,
-                   Status__c,
-                   Reason_To_Leave__c,
-                   Days_Taken__c
-            FROM Leave__c
-            WHERE OwnerId=:UserInfo.getUserId()
-            ORDER BY Start_Date__c DESC, CreatedDate DESC
+            SELECT 
+                Id,Name,Start_Date__c,End_Date__c,Leave_Type__c,Status__c,Reason_To_Leave__c,Days_Taken__c
+            FROM 
+                Leave__c
+            WHERE 
+                OwnerId=:UserInfo.getUserId()
+            ORDER BY 
+                Start_Date__c DESC,
+                CreatedDate DESC
         ];
+    }
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @methodName:      getMyOpenCases
+ * @Description:     Returns up to 'limitSize' open Cases owned by the current user, ordered by LastModifiedDate DESC
+ *                   Open is defined as IsClosed=false
+ **********************************************************************************************************************/
+    @AuraEnabled(cacheable=true)
+    public static List<Case> getMyOpenCases(Integer limitSize){
+        Integer lim=20;
+        Id uid=UserInfo.getUserId();
+        String soql='SELECT Id, CaseNumber, Subject, Status, Priority, Type, LastModifiedDate '+
+                      'FROM Case '+
+                      'WHERE OwnerId=\''+String.escapeSingleQuotes(String.valueOf(uid))+'\' AND IsClosed=false '+
+                      'ORDER BY LastModifiedDate DESC '+
+                      'LIMIT '+String.valueOf(lim);
+        return Database.query(soql);
+    }
+/********************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @methodName:      getMyPastLeaves
+ * @Description:     Returns up to 'limitSize' Leaves for current user with Status__c IN ('Inactive','Rejected')
+ *                   Ordered by End_Date__c DESC
+ **********************************************************************************************************************/
+    @AuraEnabled(cacheable=true)
+    public static List<Leave__c> getMyPastLeaves(Integer limitSize){
+        Integer lim=20;
+        Id uid=UserInfo.getUserId();
+        String soql='SELECT Id, Name, Start_Date__c, End_Date__c, Status__c '+
+                      'FROM Leave__c '+
+                      'WHERE OwnerId=\''+String.escapeSingleQuotes(String.valueOf(uid))+'\' '+
+                      'AND Status__c IN (\'Inactive\', \'Rejected\') '+
+                      'ORDER BY End_Date__c DESC, CreatedDate DESC '+
+                      'LIMIT '+String.valueOf(lim);
+        return Database.query(soql);
     }
 }
