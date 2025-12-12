@@ -27,11 +27,9 @@ public with sharing class LeaveTriggerHandler{
         DateTime endDateTime=DateTime.newInstanceGMT(
             endDate.year(),endDate.month(),endDate.day(),0,0,0
         );
-        Long millisecondsDiff =
-            BusinessHours.diff(defaultHours.Id,startDateTime,endDateTime);
-
-        Decimal businessHours=millisecondsDiff / (1000.0*60.0*60.0);
-        Decimal businessDays=businessHours / 24.0;
+        Long millisecondsDiff=BusinessHours.diff(defaultHours.Id,startDateTime,endDateTime);
+        Decimal totalHours=millisecondsDiff/(1000.0*60.0*60.0);
+        Decimal businessDays=totalHours/24.0;
         return businessDays.intValue();
     }
     /********************************************************************************************************************
