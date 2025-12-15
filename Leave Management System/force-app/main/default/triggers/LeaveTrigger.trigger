@@ -1,4 +1,4 @@
-trigger LeaveTrigger on Leave__c (before insert,before update,after insert,after update){
+trigger LeaveTrigger on Leave__c (before insert,before update,after insert,after update,after delete){
     if(Trigger.isBefore){
         if(Trigger.isInsert){
             LeaveTriggerHandler.handleBeforeInsertUpdate(Trigger.new,null);
@@ -13,6 +13,9 @@ trigger LeaveTrigger on Leave__c (before insert,before update,after insert,after
         }
         if(Trigger.isUpdate){
             LeaveTriggerHandler.handleAfterUpdate(Trigger.new,Trigger.oldMap);
+        }
+        if(Trigger.isDelete){
+            LeaveTriggerHandler.handleAfterDelete(Trigger.old);
         }
      }
 }

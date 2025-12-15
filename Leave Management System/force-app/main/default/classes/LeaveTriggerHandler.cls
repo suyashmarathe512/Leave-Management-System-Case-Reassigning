@@ -311,11 +311,11 @@ public with sharing class LeaveTriggerHandler{
 *@Description: Helper method to query Case records and return a list
  **************************************************************************************************************************/
 private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
-    return [
-        SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c
-        FROM Case
-        WHERE OwnerId IN :ownerIds AND IsClosed=false
-    ];
+    String query = 'SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
+    if(isDelegated != null){
+        query += ' AND Is_delegated__c = :isDelegated';
+     }
+    return Database.query(query);
 }
 /************************************************************************************************************************
 *@Author:      CRM Team Innovation
@@ -344,6 +344,7 @@ private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id origin
  **************************************************************************************************************************/
 private static String buildCaseSummaryLines(List<Case> casesList){
     String body='';
+    String baseUrl = URL.getOrgDomainUrl().toExternalForm();
     if(casesList==null){
         return body;
     }
@@ -352,11 +353,65 @@ private static String buildCaseSummaryLines(List<Case> casesList){
         body+= 'Subject: '   +c.Subject   +'\n';
         body+= 'Status: '    +c.Status    +'\n';
         body+= 'Priority: '  +c.Priority  +'\n';
-        body+= 'Type: '      +c.Type      +'\n\n';
+        body+= 'Type: '      +c.Type      +'\n';
+        body+= 'View Case: ' + baseUrl + '/' + c.Id + '\n\n';
     }
     return body;
 }
-/************************************************************************************************************************
+    /************************************************************************************************************************
+*@Author:      CRM Team Innovation
+*@methodName:  getUsersOnLeave
+*@param:       userIds-Set of User Ids to check for active leave
+*@Description: Helper method to determine which users from a given set are currently on an active leave.
+*              Returns a map of UserId -> IsOnLeave(Boolean).
+ **************************************************************************************************************************/
+private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
+    Map<Id, Boolean> userOnLeaveMap = new Map<Id, Boolean>();
+    // Initialize all users in the set to be not on leave by default
+    for (Id userId : userIds) {
+        userOnLeaveMap.put(userId, false);
+    }
+    // Find all active leaves for the given users
+    List<Leave__c> activeLeaves = [
+        SELECT 
+            OwnerId
+        FROM 
+            Leave__c
+        WHERE 
+            OwnerId IN :userIds
+        AND 
+            Status__c = 'Active'
+    ];
+    // Mark users with active leaves as on leave
+    for (Leave__c leave : activeLeaves) {
+        userOnLeaveMap.put(leave.OwnerId, true);
+    }
+    return userOnLeaveMap;
+}
+    /********************************************************************************************************************
+    *@Author:          CRM Team Innovation
+    *@methodName:      handleAfterDelete
+    *@param:         oldLeaves-List of Leave__c records after delete
+    *@Description:     Handle case reassignment when active leave is deleted
+     **********************************************************************************************************************/
+    public static void handleAfterDelete(List<Leave__c> oldLeaves){
+        if(oldLeaves == null || oldLeaves.isEmpty()) return;
+        List<Leave__c> dummyNewLeaves = new List<Leave__c>();
+        Map<Id, Leave__c> oldMap = new Map<Id, Leave__c>();
+        
+        for(Leave__c lv : oldLeaves){
+            if(lv.Status__c == 'Active'){
+                Leave__c dummyNew = lv.clone(true);
+                dummyNew.Status__c = 'Inactive';
+                dummyNewLeaves.add(dummyNew);
+                oldMap.put(lv.Id, lv);
+            }
+        }
+        if(!dummyNewLeaves.isEmpty()){
+            handleAfterUpdate(dummyNewLeaves, oldMap);
+        }
+    }
+    /************************************************************************************************************************
 *@Author:      CRM Team Innovation
 *@methodName:  handleAfterUpdate
 *@param:       newLeaves-List of Leave__c records after update
@@ -424,9 +479,17 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     caseOwnerIds.addAll(allOwnerIds);
     caseOwnerIds.addAll(delegateIds);
     List<Case> allOpenCases=getCases(caseOwnerIds,null);
+    // 4.1 Get all cases that are currently delegated (Is_delegated__c = true)
+    List<Case> delegatedCases = getCases(caseOwnerIds, true);
     // Group all cases by current owner
     Map<Id,List<Case>> ownerToCasesMap=new Map<Id,List<Case>>();
+    Set<Id> processedCaseIds = new Set<Id>();
     for(Case c:allOpenCases){
+        // Skip if we've already processed this case ID to prevent duplicates
+        if(processedCaseIds.contains(c.Id)){
+            continue;
+        }
+        processedCaseIds.add(c.Id);
         List<Case> bucket=ownerToCasesMap.get(c.OwnerId);
         if(bucket==null){
             bucket=new List<Case>();
@@ -442,7 +505,42 @@ private static String buildCaseSummaryLines(List<Case> casesList){
     Map<Id,List<Case>> originalOwnerToCasesReturnedMap=new Map<Id,List<Case>>();
     // For Active(no delegate): cases that must go to Case_Queue
     List<Case> casesToMoveToQueue=new List<Case>();
-    // 6. Scenario Owner goes Active(delegate or queue)
+    // For cases that need to be reassigned to queue because delegate went on leave
+    List<Case> casesToReassignToQueue=new List<Case>();
+    // Set to track which cases have already been added to allCasesToUpdate to prevent duplicates
+    Set<Id> addedCaseIds = new Set<Id>();
+    // 6. Determine who is currently on leave (both owners and their delegates)
+    Set<Id> leaveCheckIds = new Set<Id>();
+    leaveCheckIds.addAll(allOwnerIds);
+    leaveCheckIds.addAll(delegateIds);
+    Map<Id, Boolean> isOnLeave = getUsersOnLeave(leaveCheckIds);
+
+    // 7. Scenario: Check for cases that need to be reassigned to queue because their delegate is now on leave
+    Id caseQueueId = [SELECT 
+                        Id 
+                    FROM 
+                        Group 
+                    WHERE 
+                        Name = 'Case Queue'
+                    LIMIT 1].Id;
+    if(caseQueueId != null && !delegateIds.isEmpty()) {
+        for(Case c : delegatedCases) {
+            // Check if the current delegate is on leave
+            if(isOnLeave.get(c.OwnerId) == true) {
+                // This case was delegated to someone who is now on leave
+                c.OwnerId=caseQueueId;
+                c.Is_delegated__c=true;
+                // Only process each case once to avoid duplicates
+                if(!addedCaseIds.contains(c.Id)) {
+                    casesToReassignToQueue.add(c);
+                    allCasesToUpdate.add(c);
+                    addedCaseIds.add(c.Id);
+                }
+            }
+        }
+    }
+    
+    // 8. Scenario Owner goes Active(delegate or queue)
     if(!activeOwnerIds.isEmpty()){
         for(Id ownerId:activeOwnerIds){
             List<Case> userCases=ownerToCasesMap.get(ownerId);
@@ -450,11 +548,17 @@ private static String buildCaseSummaryLines(List<Case> casesList){
                 continue;
             }
             Id delegateId=ownerToDelegateMap.get(ownerId);
-            if(delegateId!=null){
+            if(delegateId!=null && !isOnLeave.get(delegateId)) {
                 // Reassign all of this owner's cases to delegate in memory
                 List<Case> casesForThisOwner=new List<Case>(userCases);
                 reassignCases(casesForThisOwner,delegateId,ownerId,true);
-                allCasesToUpdate.addAll(casesForThisOwner);
+                // Only add to allCasesToUpdate if not already added
+                for(Case c : casesForThisOwner) {
+                    if(!addedCaseIds.contains(c.Id)) {
+                        allCasesToUpdate.add(c);
+                        addedCaseIds.add(c.Id);
+                    }
+                }
                 List<Case> delegateBucket=delegateToCasesActivatedMap.get(delegateId);
                 if(delegateBucket==null){
                     delegateBucket=new List<Case>();
@@ -462,69 +566,73 @@ private static String buildCaseSummaryLines(List<Case> casesList){
                 }
                 delegateBucket.addAll(casesForThisOwner);
             } else{
-                // No delegate: these will go to queue
+                // No delegate OR delegate is on leave: these will go to queue
                 casesToMoveToQueue.addAll(userCases);
             }
         }
     }
-    // 7. Scenario – Owner goes Inactive(return delegated cases)
+    // 9. Scenario – Owner goes Inactive(return delegated cases)
     if(!inactiveOwnerIds.isEmpty()){
-        for(Id originalOwnerId:inactiveOwnerIds){
-            Id delegateId=ownerToDelegateMap.get(originalOwnerId);
-            if(delegateId==null){
-                continue;
-            }
-            List<Case> delegateCases=ownerToCasesMap.get(delegateId);
-            if(delegateCases==null||delegateCases.isEmpty()){
-                continue;
-            }
-            List<Case> casesForThisOwner=new List<Case>();
-            for(Case c:delegateCases){
-                // Only pick cases that were delegated from this owner
-                if(c.Is_delegated__c==true&&c.Orginal_Owner_Id__c==originalOwnerId){
-                    casesForThisOwner.add(c);
+        // Find all cases that were delegated FROM any of the inactive owners.
+        // This is simpler and more robust than iterating through delegates.
+        // It correctly finds cases whether they are with a delegate or in a queue.
+        List<Case> casesToReturn = [
+            SELECT 
+                Id, OwnerId, Orginal_Owner_Id__c, Is_delegated__c, CaseNumber, Subject, Status, Priority, Type
+            FROM 
+                Case
+            WHERE 
+                Orginal_Owner_Id__c 
+            IN 
+                :inactiveOwnerIds 
+            AND 
+                Is_delegated__c = true 
+            AND 
+                IsClosed = false
+        ];
+        if (!casesToReturn.isEmpty()) {
+            for (Case c : casesToReturn) {
+                Id originalOwnerId = c.Orginal_Owner_Id__c;
+                // Set fields for reassignment
+                c.OwnerId = originalOwnerId;
+                c.Orginal_Owner_Id__c = null;
+                c.Is_delegated__c = false;
+
+                // Add to the master list for DML update, checking for duplicates
+                if(!addedCaseIds.contains(c.Id)) {
+                    allCasesToUpdate.add(c);
+                    addedCaseIds.add(c.Id);
                 }
+
+                // Add to map for email notifications
+                List<Case> originalBucket = originalOwnerToCasesReturnedMap.get(originalOwnerId);
+                if (originalBucket == null) {
+                    originalBucket = new List<Case>();
+                    originalOwnerToCasesReturnedMap.put(originalOwnerId, originalBucket);
+                }
+                originalBucket.add(c);
             }
-            if(casesForThisOwner.isEmpty()){
-                continue;
-            }
-            // Reassign back to original owner in-memory
-            reassignCases(casesForThisOwner,originalOwnerId,null,false);
-            allCasesToUpdate.addAll(casesForThisOwner);
-            List<Case> originalBucket=originalOwnerToCasesReturnedMap.get(originalOwnerId);
-            if(originalBucket==null){
-                originalBucket=new List<Case>();
-                originalOwnerToCasesReturnedMap.put(originalOwnerId,originalBucket);
-            }
-            originalBucket.addAll(casesForThisOwner);
         }
     }
-    // 8. Cases with no delegate → Case_Queue
-    if(!casesToMoveToQueue.isEmpty()){
-        List<Group> queueList=[
-            SELECT 
-                Id
-            FROM 
-                Group
-            WHERE 
-                Name='Case_Queue'
-            LIMIT 1
-        ];
-        if (!queueList.isEmpty()){
-            Id caseQueueId=queueList[0].Id;
-            for (Case c : casesToMoveToQueue){
-                c.OwnerId=caseQueueId;
-                c.Is_delegated__c=false;
-                c.Orginal_Owner_Id__c=null;
+    // 10. Cases with no delegate or delegate on leave → Case_Queue
+    if(caseQueueId != null && !casesToMoveToQueue.isEmpty()){
+        for (Case c : casesToMoveToQueue){
+            Id originalOwnerId = c.OwnerId;
+            c.OwnerId=caseQueueId;
+            c.Is_delegated__c=true;
+            c.Orginal_Owner_Id__c=originalOwnerId;
+            // Only add to allCasesToUpdate if not already added
+            if(!addedCaseIds.contains(c.Id)) {
+                allCasesToUpdate.add(c);
+                addedCaseIds.add(c.Id);
             }
-            allCasesToUpdate.addAll(casesToMoveToQueue);
-        } else{}
+        }
     }
     // Single bulk DML for all case changes
     if(!allCasesToUpdate.isEmpty()){
         Database.update(allCasesToUpdate,false);
     }
-    // 10. Emails – now both owners and delegates are in allUserMap
+    // 12. Emails – now both owners and delegates are in allUserMap
     //  Emails to delegates for newly assigned cases(Active)
     for(Id delegateId:delegateToCasesActivatedMap.keySet()){
         User delegatedUser=allUserMap.get(delegateId);
@@ -541,7 +649,6 @@ private static String buildCaseSummaryLines(List<Case> casesList){
             'The following cases have been reassigned to you as the delegated user for an employee on leave:\n\n'+
             buildCaseSummaryLines(casesForDelegate)+
             '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
-
         sendEmail(delegatedUser.Email,subject,body);
     }
     // Emails to original owners(and delegates) for returned cases(Inactive)
@@ -561,7 +668,6 @@ private static String buildCaseSummaryLines(List<Case> casesList){
                 'Your leave has ended,and the following cases have been reassigned back to you:\n\n'+
                 caseLines+
                 '\nPlease review and handle accordingly.\n\nBest regards,\nLeave Management System';
-
             sendEmail(originalUser.Email,subjectOwner,bodyOwner);
         }
         // Email to delegate
