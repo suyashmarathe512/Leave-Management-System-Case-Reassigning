@@ -15,22 +15,15 @@ export default class LeaveSummary extends NavigationMixin(LightningElement){
     availableSick=0;
     cases=[];
     casesError;
-    pastLeaves=[];
+    _pastLeaves=[];
     pastLeavesError;
-    columns=[
-    { label:'Start Date',fieldName:'_startDate',type:'text',sortable:true},
-    { label:'Leave Type',fieldName:'Leave_Type__c',type:'text',sortable:true},
-    { label:'Reason',fieldName:'Reason__c',type:'text'},
-    { label:'Days Taken',fieldName:'Days_Taken__c',type:'number'},
-    { label:'Status',fieldName:'Status__c',type:'text'}
-    ];
 get contentClass(){
     return this.isSidebarOpen?"content-wrap shifted" :"content-wrap";
 }
     @wire(getLeaveBalances)
     wiredBalances({ error,data}){
         if(data){
-            console.log('getLeaveBalances data => ',JSON.stringify(data));
+            console.log('getLeaveBalances data=>',JSON.stringify(data));
             this.earned=data.earned??0;
             this.sick=data.sick??0;
             this.bookedEarned=data.bookedEarned??0;
@@ -57,24 +50,62 @@ get contentClass(){
     @wire(getMyPastLeaves,{ limitSize:20})
     wiredPastLeaves({ error,data}){
         if (data){
-            this.pastLeaves=data;
+            this._pastLeaves=data;
             this.pastLeavesError=undefined;
     } else if (error){
-            this.pastLeaves=[];
+            this._pastLeaves=[];
             this.pastLeavesError=error;
     }
 }
-    get formattedLeaves(){
-        const rows=this.leaves&&this.leaves.data?this.leaves.data :[];
-        return rows.map((r,idx) => ({
-            ...r,
-            _rowClass:idx % 2 === 0?'row-even' :'row-odd',
-            _startDate:this._formatDateSafe(r.Start_Date__c),
-            _endDate:this._formatDateSafe(r.End_Date__c)
-    }));
+    _formatLeave(record) {
+        // 1."25 Dec 2025,Thursday"
+        let finalDate=record.Start_Date__c;
+        if (record.Start_Date__c) {
+            try {
+                const d=new Date(record.Start_Date__c);
+                const datePart=d.toLocaleDateString('en-GB',{ day: 'numeric',month: 'short',year: 'numeric' });
+                const dayPart=d.toLocaleDateString('en-GB',{ weekday: 'long' });
+                finalDate=`${datePart},${dayPart}`;
+            } catch (e) {
+                console.error('Date format error',e);
+            }
+        }
+        // 2. Leave Type & Dot Styling
+        const type=record.Leave_Type__c?record.Leave_Type__c.replace(/_/g,' '):'Leave';
+        const isSick=type.toLowerCase().includes('sick');
+        const dotClass=isSick?'status-dot sick':'status-dot casual';
+        // 3. Status Text Styling
+        let statusClass='status-text';
+        if (record.Status__c==='Approved') statusClass+=' status-approved';
+        else if (record.Status__c==='Active') statusClass+=' status-active';
+        else if (record.Status__c==='Rejected') statusClass+=' status-rejected';
+        else statusClass+=' status-pending';
+        return {
+            ...record,
+            formattedDate: finalDate,
+            typeLabel: type,
+            durationLabel: `• ${record.Days_Taken__c || 0} ${record.Days_Taken__c===1?'day':'days'}`,
+            dotClass: dotClass,
+            statusClass: statusClass
+        };
+    }
+    get upcomingLeaves() {
+        const rows=this.leaves&&this.leaves.data?this.leaves.data:[];
+        // Filter: Approved,Pending,or Active
+        return rows
+            .filter(r=>['Approved','Pending','Active'].includes(r.Status__c))
+            .map(r=>this._formatLeave(r));
+    }
+    get pastLeaves() {
+        const futureRows=this.leaves&&this.leaves.data?this.leaves.data:[];
+        const pastRows=Array.isArray(this._pastLeaves)?this._pastLeaves:[];
+        // Include rejected/other from future list + all past leaves
+        const rejectedFuture=futureRows.filter(r=>!['Approved','Pending','Active'].includes(r.Status__c));
+        const allPast=[...rejectedFuture,...pastRows];
+        return allPast.map(r=>this._formatLeave(r));
 }
     get formattedCases(){
-        return Array.isArray(this.cases)?this.cases.map(c => ({
+        return Array.isArray(this.cases)?this.cases.map(c=>({
             Id:c.Id,
             Subject:c.Subject||c.CaseNumber||'Case',
             CaseNumber:c.CaseNumber||'',
@@ -82,7 +113,7 @@ get contentClass(){
     })) :[];
 }
     get formattedPastLeaves(){
-        return Array.isArray(this.pastLeaves)?this.pastLeaves.map(p => ({
+        return Array.isArray(this._pastLeaves)?this._pastLeaves.map(p=>({
             Id:p.Id,
             Name:p.Name||'Leave',
             _startDate:this._formatDateSafe(p.Start_Date__c),
