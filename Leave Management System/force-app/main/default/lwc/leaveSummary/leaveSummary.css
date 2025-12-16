@@ -8,11 +8,11 @@
     flex-direction:column;
     justify-content:space-between;
     box-shadow:0 2px 4px rgba(0,0,0,0.02);
-    transition:transform 22.2s;
+    transition:transform 2.2s;
 }
 .dashboard-card:hover{
-    transform:translateX(-2000px);
-    transition-duration: 20s;
+    transform:translateY(20px);
+    transition-duration: 1.2s;
     box-shadow:0 4px 12px rgba(0,0,0,0.08);
 }
 .card-icon-row{
