@@ -285,13 +285,22 @@ public with sharing class LeaveTriggerHandler{
     *@Description:     Helper method to query User records and return a map
      **************************************************************************************************************************/
    private static Map<Id,User> getUserMap(Set<Id> ownerIds){
+    Set<Id> delegateIds = new Set<Id>();
+    for(User u : [SELECT DelegatedApproverId FROM User WHERE Id IN :ownerIds AND DelegatedApproverId != null]) {
+        delegateIds.add(u.DelegatedApproverId);
+    }
+    
+    Set<Id> allUserIds = new Set<Id>();
+    allUserIds.addAll(ownerIds);
+    allUserIds.addAll(delegateIds);
+    
     return new Map<Id,User>([
         SELECT
             Id,DelegatedApproverId,Email,Name
         FROM
             User
         WHERE
-            Id IN :ownerIds OR DelegatedApproverId IN :ownerIds
+            Id IN :allUserIds
     ]);
 }
 /************************************************************************************************************************

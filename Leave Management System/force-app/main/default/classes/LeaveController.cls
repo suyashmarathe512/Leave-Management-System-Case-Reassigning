@@ -93,22 +93,5 @@ public with sharing class LeaveController{
                       'LIMIT '+String.valueOf(lim);
         return Database.query(soql);
     }
-/********************************************************************************************************************
- * @Author:          CRM Team Innovation
- * @methodName:      getMyPastLeaves
- * @Description:     Returns up to 'limitSize' Leaves for current user with Status__c IN ('Inactive','Rejected')
- *                   Ordered by End_Date__c DESC
- **********************************************************************************************************************/
-    @AuraEnabled(cacheable=true)
-    public static List<Leave__c> getMyPastLeaves(Integer limitSize){
-        Integer lim=20;
-        Id uid=UserInfo.getUserId();
-        String soql='SELECT Id, Name, Start_Date__c, End_Date__c, Status__c '+
-                      'FROM Leave__c '+
-                      'WHERE OwnerId=\''+String.escapeSingleQuotes(String.valueOf(uid))+'\' '+
-                      'AND Status__c IN (\'Inactive\', \'Rejected\') '+
-                      'ORDER BY End_Date__c DESC, CreatedDate DESC '+
-                      'LIMIT '+String.valueOf(lim);
-        return Database.query(soql);
-    }
+
 }

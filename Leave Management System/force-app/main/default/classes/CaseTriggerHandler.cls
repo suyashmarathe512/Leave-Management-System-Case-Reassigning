@@ -30,6 +30,7 @@ public static void reassignCasesForUsersOnLeave(List<Case> newCases){
         ownerIds.add(c.OwnerId);
     }
     if (!ownerIds.isEmpty()){
+        Date today=Date.today();
         List<Leave__c> leaves=[SELECT 
                                     Id,OwnerId,Start_Date__c,End_Date__c,Status__c,Leave_Type__c,Days_Taken__c
                                 FROM 
@@ -37,7 +38,11 @@ public static void reassignCasesForUsersOnLeave(List<Case> newCases){
                                 WHERE 
                                     OwnerId IN :ownerIds
                                 AND 
-                                    Status__c='Active'];
+                                    Status__c='Approved'
+                                AND 
+                                    Start_Date__c<=:today
+                                AND 
+                                    End_Date__c>=:today];
         Map<Id,Leave__c> oldleaveMapDummy=new Map<Id,Leave__c>();
         for(Leave__c lv:leaves){
             Leave__c oldLeave=lv.clone();

@@ -3,7 +3,7 @@ import{ NavigationMixin} from 'lightning/navigation';
 import getLeaveBalances from '@salesforce/apex/LeaveController.getLeaveBalances';
 import getMyLeaves from '@salesforce/apex/LeaveController.getMyLeaves';
 import getMyOpenCases from '@salesforce/apex/LeaveController.getMyOpenCases';
-import getMyPastLeaves from '@salesforce/apex/LeaveController.getMyPastLeaves';
+
 export default class LeaveSummary extends NavigationMixin(LightningElement){
     isSidebarOpen=false;
     earned=0;
@@ -15,8 +15,7 @@ export default class LeaveSummary extends NavigationMixin(LightningElement){
     availableSick=0;
     cases=[];
     casesError;
-    _pastLeaves=[];
-    pastLeavesError;
+    
 get contentClass(){
     return this.isSidebarOpen?"content-wrap shifted" :"content-wrap";
 }
@@ -47,16 +46,7 @@ get contentClass(){
             this.casesError=error;
     }
 }
-    @wire(getMyPastLeaves,{ limitSize:20})
-    wiredPastLeaves({ error,data}){
-        if (data){
-            this._pastLeaves=data;
-            this.pastLeavesError=undefined;
-    } else if (error){
-            this._pastLeaves=[];
-            this.pastLeavesError=error;
-    }
-}
+    
     _formatLeave(record) {
         // 1."25 Dec 2025,Thursday"
         let finalDate=record.Start_Date__c;
@@ -77,7 +67,6 @@ get contentClass(){
         // 3. Status Text Styling
         let statusClass='status-text';
         if (record.Status__c==='Approved') statusClass+=' status-approved';
-        else if (record.Status__c==='Active') statusClass+=' status-active';
         else if (record.Status__c==='Rejected') statusClass+=' status-rejected';
         else statusClass+=' status-pending';
         return {
@@ -90,20 +79,33 @@ get contentClass(){
         };
     }
     get upcomingLeaves() {
-        const rows=this.leaves&&this.leaves.data?this.leaves.data:[];
-        // Filter: Approved,Pending,or Active
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+    
+        const rows = this.leaves?.data || [];
+    
         return rows
-            .filter(r=>['Approved','Pending','Active'].includes(r.Status__c))
-            .map(r=>this._formatLeave(r));
+            .filter(r => {
+                const endDate = new Date(r.End_Date__c);
+                return endDate >= today;
+            })
+            .map(r => this._formatLeave(r));
     }
+    
     get pastLeaves() {
-        const futureRows=this.leaves&&this.leaves.data?this.leaves.data:[];
-        const pastRows=Array.isArray(this._pastLeaves)?this._pastLeaves:[];
-        // Include rejected/other from future list + all past leaves
-        const rejectedFuture=futureRows.filter(r=>!['Approved','Pending','Active'].includes(r.Status__c));
-        const allPast=[...rejectedFuture,...pastRows];
-        return allPast.map(r=>this._formatLeave(r));
-}
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+    
+        const rows = this.leaves?.data || [];
+    
+        return rows
+            .filter(r => {
+                const endDate = new Date(r.End_Date__c);
+                return endDate < today;
+            })
+            .map(r => this._formatLeave(r));
+    }
+    
     get formattedCases(){
         return Array.isArray(this.cases)?this.cases.map(c=>({
             Id:c.Id,
@@ -112,15 +114,7 @@ get contentClass(){
             Status:c.Status||''
     })) :[];
 }
-    get formattedPastLeaves(){
-        return Array.isArray(this._pastLeaves)?this._pastLeaves.map(p=>({
-            Id:p.Id,
-            Name:p.Name||'Leave',
-            _startDate:this._formatDateSafe(p.Start_Date__c),
-            _endDate:this._formatDateSafe(p.End_Date__c),
-            Status__c:p.Status__c||''
-    })) :[];
-}
+    
     _formatDateSafe(dateIso){
         if (!dateIso) return '';
         try{

@@ -3,10 +3,9 @@ public class LeaveTriggerHandlerTest{
     private static final String EARNED_LEAVE='Earned_Leave';
     private static final String SICK_LEAVE='Sick_Leave';
     private static final String UNPAID_LEAVE='Unpaid_Leave';
-    private static final String ACTIVE_STATUS='Active';
-    private static final String INACTIVE_STATUS='Inactive';
     private static final String PENDING_STATUS='Pending';
     private static final String APPROVED_STATUS='Approved';
+    private static final String REJECTED_STATUS='Rejected';
     @testSetup
     static void setupTestData(){
         User testUser=new User(
@@ -185,7 +184,7 @@ public class LeaveTriggerHandlerTest{
                 Start_Date__c=Date.today(),
                 End_Date__c=Date.today().addDays(2),
                 Leave_Type__c=EARNED_LEAVE,
-                Status__c=PENDING_STATUS
+                Status__c=APPROVED_STATUS
             );
             insert firstLeave;
             Leave__c secondLeave=new Leave__c(
@@ -193,7 +192,7 @@ public class LeaveTriggerHandlerTest{
                 Start_Date__c=Date.today().addDays(1),
                 End_Date__c=Date.today().addDays(3),
                 Leave_Type__c=EARNED_LEAVE,
-                Status__c=PENDING_STATUS
+                Status__c=APPROVED_STATUS
             );
             Test.startTest();
             Database.SaveResult result=Database.insert(secondLeave,false);
@@ -216,7 +215,7 @@ public class LeaveTriggerHandlerTest{
                 Start_Date__c=Date.today(),
                 End_Date__c=Date.today().addDays(5),
                 Leave_Type__c=EARNED_LEAVE,
-                Status__c=PENDING_STATUS
+                Status__c=APPROVED_STATUS
             );
             insert firstLeave;
             Leave__c secondLeave=new Leave__c(
@@ -306,7 +305,7 @@ public class LeaveTriggerHandlerTest{
             insert leave;
             leave=[SELECT Id,Status__c FROM Leave__c WHERE Id=:leave.Id];
             Test.startTest();
-            Leave__c toUpdate=new Leave__c(Id=leave.Id,Status__c=ACTIVE_STATUS);
+            Leave__c toUpdate=new Leave__c(Id=leave.Id,Status__c=APPROVED_STATUS);
             update toUpdate;
             Test.stopTest();
             System.debug('Email invocations after activation: ' + Limits.getEmailInvocations());
@@ -354,10 +353,10 @@ public class LeaveTriggerHandlerTest{
                 Status__c=PENDING_STATUS
             );
             insert leave;
-            Leave__c toActive=new Leave__c(Id=leave.Id,Status__c=ACTIVE_STATUS);
+            Leave__c toActive=new Leave__c(Id=leave.Id,Status__c=APPROVED_STATUS);
             update toActive;
             Test.startTest();
-            Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=INACTIVE_STATUS);
+            Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=REJECTED_STATUS);
             Database.SaveResult result=Database.update(toInactive,false);
             Test.stopTest();
             System.debug('Email invocations after inactivation: ' + Limits.getEmailInvocations());
@@ -411,10 +410,10 @@ public class LeaveTriggerHandlerTest{
                 Status__c=PENDING_STATUS
             );
             insert leave;
-            Leave__c toActive=new Leave__c(Id=leave.Id,Status__c=ACTIVE_STATUS);
+            Leave__c toActive=new Leave__c(Id=leave.Id,Status__c=APPROVED_STATUS);
             update toActive;
             Test.startTest();
-            Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=INACTIVE_STATUS);
+            Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=REJECTED_STATUS);
             Database.update(toInactive,false);
             Test.stopTest();
             System.debug('Email invocations after inactivation (2nd test): ' + Limits.getEmailInvocations());
@@ -446,8 +445,8 @@ public class LeaveTriggerHandlerTest{
         System.runAs(adminUser){
             Leave__c leave=new Leave__c(
                 OwnerId=testUser.Id,
-                Start_Date__c=Date.today(),
-                End_Date__c=Date.today().addDays(1),
+                Start_Date__c=Date.today().addDays(10),
+                End_Date__c=Date.today().addDays(12),
                 Leave_Type__c=EARNED_LEAVE,
                 Status__c=PENDING_STATUS
             );

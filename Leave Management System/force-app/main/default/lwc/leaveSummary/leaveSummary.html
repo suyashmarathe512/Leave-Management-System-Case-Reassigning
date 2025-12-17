@@ -31,12 +31,12 @@
             <!-- PAST LEAVES -->
             <div class="drawer-section divider">
                 <h3><strong> Past Leaves</strong> </h3>
-                <template if:true={formattedPastLeaves}>
-                    <template if:true={formattedPastLeaves.length}>
-                        <template for:each={formattedPastLeaves} for:item="p">
-                            <div class="case-item small" key={p.Id}>
-                                <div class="item-title">{p.Name}</div>
-                                <div class="item-meta">{p._startDate} → {p._endDate} • {p.Status__c}</div>
+                <template if:true={pastLeaves}>
+                    <template if:true={pastLeaves.length}>
+                        <template for:each={pastLeaves} for:item="leave">
+                            <div class="case-item small" key={leave.Id}>
+                                <div class="item-title">{leave.formattedDate}</div>
+                                <div class="item-meta">{leave.Status__c}</div>
                             </div>
                         </template>
                     </template>
@@ -108,7 +108,7 @@
         <!-- UPCOMING LEAVES -->
         <div class="list-container">
             <div class="list-header">
-                <h2>Upcoming Leaves & Holidays</h2>
+                <h2>Upcoming Leaves</h2>
                 <lightning-button-icon icon-name="utility:add" variant="border-filled" onclick={handleApplyLeave} alternative-text="Apply"></lightning-button-icon>
             </div>
             <template if:true={upcomingLeaves.length}>
@@ -142,7 +142,7 @@
         <!--PAST LEAVES -->
         <div class="list-container">
             <div class="list-header">
-                <h2>Past Leaves & Holidays</h2>
+                <h2>Past Leaves</h2>
             </div>
             <template if:true={pastLeaves.length}>
                 <ul class="leave-list">
