@@ -1,294 +1,130 @@
-# Leave Management System — Architecture and Flow (force-app/main/default only)
+# Leave Management and Case Reassignment System
 
-This document explains, in simple language, how the Salesforce pieces under force-app/main/default work together. It covers objects and fields, Apex trigger and handler, Apex controller and tests, Flow, Lightning Web Component (LWC), tabs and app, and the permission set. The goal is to help you quickly understand the end‑to‑end behavior and critical design decisions.
-
-Scope: Only metadata in force-app/main/default.
-
----------------------------------------------------------------------
+This document explains the architecture of the Leave Management and Case Reassignment system, focusing on the metadata within the `force-app/main/default` directory. It is designed to help developers and administrators understand the objects, automation, and logic that drive the application.
 
 ## High-level Architecture
 
-- Data layer (Custom Objects)
-  - Leave__c — the main leave request.
-  - Leave_Balance__c — per-user leave balances.
-  - Case (standard) — with two custom fields used for delegation/original owner tracking.
+The system is built on a standard Salesforce declarative and programmatic model:
 
-- Automation layer
-  - Trigger: LeaveTrigger on Leave__c routes all DML events to LeaveTriggerHandler (one-trigger-per-object).
-  - Flow: Update_Status_Schedule_path_flow — updates status on a schedule/path (auto-automation).
+-   **Data Layer (Custom Objects)**: `Leave__c` for requests, `Leave_Balance__c` for balances, and custom fields on the standard `Case` object for delegation.
+-   **Automation Layer (Triggers & Flows)**:
+    -   An Apex trigger on `Leave__c` (`LeaveTrigger`) manages leave-related logic.
+    -   An Apex trigger on `Case` (`CaseTrigger`) handles automatic case reassignment for users on leave.
+    -   A Flow (`Update_Status_Schedule_path_flow`) manages time-based status updates for leave requests.
+-   **Service Layer (Apex Classes)**: Handler classes (`LeaveTriggerHandler`, `CaseTriggerHandler`) contain the core logic, and a controller (`LeaveController`) provides methods for the UI.
+-   **Presentation Layer (UI)**: A Lightning Web Component (`leaveSummary`) displays leave information to users.
+-   **Security Layer (Permission Set)**: A permission set (`Leave_Object_access`) grants access to the system's features.
 
-- Service/Controller layer (Apex)
-  - LeaveController — imperative server-side logic called by UI (e.g., LWC) and other automations.
-  - LeaveTriggerHandler — encapsulates trigger logic (insert/update/delete/undelete), bulkified and testable.
-  - Corresponding test classes for both.
-
-- Presentation layer (UI)
-  - LWC: leaveSummary — shows leave balance/summary to end users, uses SLDS, calls Apex safely.
-  - Tabs and App expose the Leave object and a console/tab for navigation.
-
-- Security
-  - Permission Set: Leave_Object_access — grants required object/field access to use features.
-
----------------------------------------------------------------------
+---
 
 ## Objects and Fields
 
 ### Leave__c (Custom Object)
-Represents a leave request made by a user.
 
-Key fields:
-- Start_Date__c (Date) — first day of leave.
-- End_Date__c (Date) — last day of leave.
-- Days_Taken__c (Number) — calculated/entered leave days.
-- Leave_Type__c (Picklist) — category (e.g., Sick, Earned, etc.).
-- Reason_To_Leave__c (Long Text) — justification.
-- Status__c (Picklist) — lifecycle status (e.g., Pending, Approved, Rejected).
+Represents a single leave request made by a user.
 
-Validation Rules (critical business guards):
-- New_record_then_status_should_be_pending — enforces initial status.
-- StartDate_should_be_greater_than_today — prevents past-dated starts.
-- EndDate_should_be_greater_than_start — end must be after start.
-- Restrict_User_From_editing_approved_leav — blocks edits when Approved.
-
-List Views:
-- All — simple admin/user list.
-
-Tab:
-- Leave__c.tab-meta.xml — adds a tab for visibility in the app.
+-   **Key Fields**: `Start_Date__c`, `End_Date__c`, `Leave_Type__c`, `Status__c` (Pending, Approved, Rejected), `Reason_To_Leave__c`.
+-   **Validation Rules**:
+    -   Ensures status is 'Pending' on creation.
+    -   Start Date cannot be in the past.
+    -   End Date must be after Start Date.
+    -   Approved leave records are locked from editing.
 
 ### Leave_Balance__c (Custom Object)
-Tracks a user’s remaining balances.
 
-Key fields:
-- Earned_Leave__c (Number)
-- Sick_Leave__c (Number)
+Tracks a user’s available leave balances (e.g., `Earned_Leave__c`, `Sick_Leave__c`). This is typically referenced by the `LeaveTriggerHandler` to validate requests.
 
-Typically referenced by LeaveController and/or LWC to present or validate usage.
+### Case (Standard Object) - Customizations
 
-### Case (Standard Object) — Custom Fields
-- Is_delegated__c (Checkbox) — identifies delegated cases (used by reassignment/delegation logic).
-- Orginal_Owner_Id__c (Lookup/Text) — stores original owner before delegation.
+The standard Case object is customized to support automatic reassignment.
 
-Note: These fields enable case reassign/delegation features if the leave process involves case records (for example, manager queues or service routing).
+-   **Key Fields**:
+    -   `Is_delegated__c` (Checkbox): A flag indicating that the case has been automatically reassigned because the original owner is on leave.
+    -   `Orginal_Owner_Id__c` (Text/Lookup): Stores the ID of the owner to whom the case was originally assigned before delegation. This ensures the case can be returned to the original owner after their leave ends.
+    -   `Previous_Owner_Id__c` (Text/Lookup): Tracks the immediately previous owner when a case is manually reassigned.
 
----------------------------------------------------------------------
+---
 
-## Automation: Trigger and Handler
+## Automation
 
-### LeaveTrigger (One Trigger Per Object)
-File: triggers/LeaveTrigger.trigger
+### Leave Automation
 
-- Purpose: Listen to DML events on Leave__c and delegate to LeaveTriggerHandler.
-- Design:
-  - One trigger per object.
-  - No logic inside the trigger body beyond calling the handler.
-  - Bulk-safe by passing Trigger.new / Trigger.old and context flags.
+#### LeaveTrigger and LeaveTriggerHandler
 
-Typical responsibilities wired through handler:
-- Before insert/update: validate cross-record conditions not covered by validations; precompute fields (e.g., Days_Taken__c).
-- After insert/update: update related balances (Leave_Balance__c), publish notifications, or fire async work if needed.
-- Delete/undelete: restore or reverse balance impacts if implemented.
+-   **Purpose**: Manages all business logic for the `Leave__c` object, following a one-trigger-per-object pattern.
+-   **`LeaveTrigger.trigger`**: A simple trigger that delegates all `before` and `after` events (insert, update, delete) to the `LeaveTriggerHandler`.
+-   **`LeaveTriggerHandler.cls`**:
+    -   **Before Save**: Validates that the user has a sufficient leave balance for the request.
+    -   **After Save**: When a leave is 'Approved', this handler reassigns all of the user's open cases to their manager. It also handles returning delegated cases to a user when they are no longer on leave (e.g., leave is cancelled or rejected).
 
-### LeaveTriggerHandler (Apex)
-File: classes/LeaveTriggerHandler.cls
+### Case Reassignment Automation
 
-- Role: Encapsulates all trigger logic; easy to test and maintain.
-- Core patterns:
-  - Bulkification: operate on Lists/Maps; no SOQL/DML in loops.
-  - Return early: skip when no relevant records.
-  - Separation by context: onBeforeInsert/Update, onAfterInsert/Update, onDelete, onUndelete methods.
-  - Security: use WITH SECURITY_ENFORCED or USER_MODE as appropriate for queries/DML that run in user context.
-  - No recursion: use a static guard if needed.
+#### CaseTrigger and CaseTriggerHandler
 
-Example critical flow (typical):
-1) Before Insert/Update:
-   - Compute Days_Taken__c = businessDays(Start_Date__c, End_Date__c) or per policy.
-   - Validate remaining balance (Sick/Earned) vs Days_Taken__c; addErrors on records when insufficient.
-2) After Insert/Update:
-   - Adjust Leave_Balance__c atomically (Database.update with partial success handling).
-   - Log/audit or enqueue async jobs (Queueable) for heavy work (emails, summaries).
+-   **Purpose**: Automatically reassigns cases that are created for or assigned to a user who is currently on an approved leave.
+-   **`CaseTrigger.trigger`**: Fires on `after insert` and `after update` to check if the case owner is on leave. It also fires on `before update` to track ownership changes.
+-   **`CaseTriggerHandler.cls`**:
+    -   `trackPreviousOwner`: Before a case is updated, it records the previous owner in `Previous_Owner_Id__c` if the owner is being changed.
+    -   `reassignCasesForUsersOnLeave`: After a case is created or updated, it checks if the owner is on an active, approved leave. If so, it cleverly re-uses the `LeaveTriggerHandler`'s reassignment logic to delegate the case to the user's manager, marking the case as delegated.
 
-Note: Tests in LeaveTriggerHandlerTest.cls cover bulk scenarios, negative paths, and permissions.
+### Flow: Update_Status_Schedule_path_flow
 
----------------------------------------------------------------------
+-   **Purpose**: Manages time-based updates to leave statuses.
+-   **Logic**: This scheduled-path flow automatically updates the `Leave__c.Status__c` field based on dates.
+    -   Example: If `Start_Date__c` is today and `Status__c` is 'Approved', it changes the status to 'In Progress'.
+    -   Example: If `End_Date__c` has passed and `Status__c` is 'In Progress', it changes the status to 'Completed'.
 
-## Apex Controller
+---
 
-### LeaveController (Apex)
-Files: classes/LeaveController.cls (+ meta), LeaveControllerTest.cls
-
-- Role: Service/utility methods for UI (LWC) and admin flows. Examples:
-  - Get current user’s balances.
-  - Calculate days between dates considering business rules.
-  - Submit/cancel leave requests.
-- Design guidelines followed:
-  - With sharing (respect org sharing).
-  - Parameter validation and exception handling.
-  - No hardcoded IDs; no SOQL/DML in loops.
-  - User-mode DML/queries where appropriate.
-
-Tests ensure:
-- Coverage and assertions on outcomes (not just happy-path).
-- Permission-sensitive scenarios using System.runAs.
-
----------------------------------------------------------------------
-
-## Flow
-
-### Update_Status_Schedule_path_flow
-File: flows/Update_Status_Schedule_path_flow.flow-meta.xml
-
-- Purpose: Periodically or conditionally update Leave__c.Status__c based on date milestones or business rules.
-- Typical schedule/path logic:
-  - If today >= Start_Date__c and status is Approved, set to In Progress.
-  - If today > End_Date__c and status is In Progress, set to Completed.
-  - For Pending beyond a threshold, auto-escalate or notify.
-- Why a Flow here:
-  - Easy admin maintenance.
-  - Non-code temporal logic scheduling.
-  - Complements trigger logic (which runs only on DML).
-
-Important notes:
-- Ensure flow runs in user context where relevant.
-- Guard conditions to avoid flip-flopping statuses.
-- Add entry/exit criteria with null checks (dates, status).
-
----------------------------------------------------------------------
-
-## Lightning Web Component (LWC)
+## Presentation Layer (LWC)
 
 ### leaveSummary
-Files: lwc/leaveSummary/*
 
-- Purpose: Show a concise summary of a user’s leave information.
-- UI/UX:
-  - SLDS-based layout for consistency.
-  - Display earned vs sick balances, recent requests, or key metrics.
-- Data access:
-  - Imperative Apex calls to LeaveController methods.
-  - Error handling: toasts/messages with user-friendly text.
-- Code practices:
-  - Reactive properties.
-  - Minimal DOM manipulation; rely on template binding.
-  - Clear event handler naming: handleXxx.
-  - Accessibility: keyboard navigable, proper aria attributes.
+A simple Lightning Web Component that calls the `LeaveController` to display the current user's leave balances and potentially a summary of their requests.
 
-Meta (leaveSummary.js-meta.xml) exposes the component to relevant targets (e.g., Record Pages, App Pages).
+---
 
----------------------------------------------------------------------
+## Security
 
-## Tabs and App
+### Leave_Object_access (Permission Set)
 
-- Tabs
-  - Leave__c.tab-meta.xml — adds the Leave tab for navigation.
-  - Leave_Portal.tab-meta.xml — portal/entry tab for end-user experience.
+Grants users the necessary CRUD permissions for `Leave__c`, `Leave_Balance__c`, and the custom fields on `Case` to use the application.
 
-- App
-  - Leave_Application.app-meta.xml — bundles tabs and navigation defaults, making the system discoverable.
+---
 
----------------------------------------------------------------------
+## End-to-End Flow Example
 
-## Permission Set
+1.  **User on Leave**: A User (e.g., 'User A') submits a `Leave__c` request for next week. Their manager approves it. The `Status__c` becomes 'Approved'.
+2.  **Case Reassignment on Approval**: The `LeaveTriggerHandler` immediately queries for all open Cases owned by 'User A' and reassigns them to User A's manager. It sets `Is_delegated__c` to `true` and populates `Orginal_Owner_Id__c` with User A's ID.
+3.  **New Case Arrives**: The next day, a new `Case` is created and assigned to 'User A'.
+4.  **Automatic Delegation**: The `CaseTrigger` fires. The `CaseTriggerHandler` checks if 'User A' is on an approved leave. Since they are, it reassigns this new case to User A's manager and flags it as delegated.
+5.  **User Returns**: User A's leave is cancelled or ends. The `LeaveTriggerHandler` finds all cases where `Orginal_Owner_Id__c` is User A and reassigns them back.
 
-### Leave_Object_access
-File: permissionsets/Leave_Object_access.permissionset-meta.xml
+---
 
-- Grants the minimum needed object/field permissions to interact with:
-  - Leave__c (CRUD + key fields like Status__c, dates, reason).
-  - Leave_Balance__c (read access; update if business requires).
-  - Any extra fields on Case for delegation features (read/update if necessary).
-- Assign to users needing to request or manage leaves.
+## Project Structure (`force-app/main/default`)
 
----------------------------------------------------------------------
-
-## End‑to‑End Flow
-
-1) User opens the app and sees the Leave tab and/or the leaveSummary component.
-2) The LWC calls LeaveController to fetch balances and display them.
-3) The user creates or edits a Leave__c record.
-4) Validation Rules block invalid entries (wrong dates or trying to edit Approved).
-5) Trigger fires:
-   - Before: compute Days_Taken__c and validate balances.
-   - After: adjust Leave_Balance__c and kick off notifications if any.
-6) Flow runs on schedule/path to move Status__c through lifecycle (e.g., Pending → Approved → In Progress → Completed) according to date/time rules.
-7) If related Case delegation is used, Case fields Is_delegated__c and Orginal_Owner_Id__c support ownership tracking.
-8) Permission Set ensures users can see and do what they need, nothing more.
-
----------------------------------------------------------------------
-
-## Critical Design Decisions and Best Practices Observed
-
-- One Trigger per Object with dedicated handler.
-- Bulkification everywhere; no SOQL/DML in loops.
-- Tests with meaningful assertions, using Test.startTest/stopTest and @TestSetup.
-- Security by design:
-  - with sharing.
-  - WITH SECURITY_ENFORCED queries and USER_MODE DML where applicable.
-  - No hardcoded IDs.
-- Clear separation of concerns:
-  - Trigger/Handler for DML-driven rules.
-  - Flow for time-based/status progression.
-  - Controller for UI/service logic.
-  - LWC for presentation.
-- Extensibility:
-  - Picklists for types and status.
-  - Validation rules for guardrails (admin-friendly).
-  - Controller methods for new UI features.
-
----------------------------------------------------------------------
-
-## How to Work With This Package (Dev Notes)
-
-- Deploy/retrieve with sf:
-  - sf project deploy start --source-dir force-app
-  - sf project retrieve start --manifest manifest/package.xml
-- Run Apex tests:
-  - sf apex run test --tests LeaveControllerTest,LeaveTriggerHandlerTest --code-coverage --result-format human
-- Assign permission set:
-  - sf org assign permset --name Leave_Object_access
-
----------------------------------------------------------------------
-
-## File Map (force-app/main/default)
-
-- applications/
-  - Leave_Application.app-meta.xml
-- aura/ (not used currently)
-- classes/
-  - LeaveController.cls (+ -meta.xml, + Test)
-  - LeaveTriggerHandler.cls (+ -meta.xml, + Test)
-- flows/
-  - Update_Status_Schedule_path_flow.flow-meta.xml
-- lwc/
-  - leaveSummary/ (html/js/css + -meta.xml)
-- objects/
-  - Case/ (custom fields: Is_delegated__c, Orginal_Owner_Id__c)
-  - Leave__c/ (fields, validations, list views)
-  - Leave_Balance__c/ (fields)
-- permissionsets/
-  - Leave_Object_access.permissionset-meta.xml
-- tabs/
-  - Leave__c.tab-meta.xml
-  - Leave_Portal.tab-meta.xml
-- triggers/
-  - LeaveTrigger.trigger (+ -meta.xml)
-
----------------------------------------------------------------------
-
-## Troubleshooting Tips
-
-- Flow status not updating:
-  - Check flow activation and schedule.
-  - Verify guard conditions and field accessibility.
-- Balance not changing:
-  - Confirm LeaveTriggerHandler after-update path runs.
-  - Review test data patterns in org; ensure matching Leave_Balance__c exists.
-- LWC shows errors:
-  - Open Dev Console logs.
-  - Check LeaveController FLS/share context and handle exceptions.
-- Validation blocks edits:
-  - Confirm business rule intent; adjust validation text and conditions if policy changed.
-
----------------------------------------------------------------------
-
-This document is intentionally comprehensive but written in plain English to speed onboarding and maintenance for the force-app/main/default package.
+```
+├── applications/
+│   └── Leave_Application.app-meta.xml
+├── classes/
+│   ├── CaseTriggerHandler.cls
+│   ├── LeaveController.cls (+ Test)
+│   └── LeaveTriggerHandler.cls (+ Test)
+├── flows/
+│   └── Update_Status_Schedule_path_flow.flow-meta.xml
+├── lwc/
+│   └── leaveSummary/
+├── objects/
+│   ├── Case/ (Custom Fields)
+│   ├── Leave__c/ (Fields, Validations)
+│   └── Leave_Balance__c/ (Fields)
+├── permissionsets/
+│   └── Leave_Object_access.permissionset-meta.xml
+├── tabs/
+│   ├── Leave__c.tab-meta.xml
+│   └── Leave_Portal.tab-meta.xml
+└── triggers/
+    ├── CaseTrigger.trigger
+    └── LeaveTrigger.trigger
+```
