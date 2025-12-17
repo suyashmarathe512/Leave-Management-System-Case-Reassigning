@@ -46,8 +46,9 @@ public with sharing class LeaveTriggerHandler{
         Date newStart=newLeave.Start_Date__c;
         Date newEnd=newLeave.End_Date__c;
         for(Leave__c existingLeave:existingLeaves){
-            if(existingLeave.Id!=newLeave.Id){
-                if(existingLeave.Status__c=='Active'||existingLeave.Status__c=='Approved'){
+            if(existingLeave.Id != newLeave.Id){
+                // Check overlap for Approved leaves.
+                if(existingLeave.Status__c=='Approved'){
                     if((newStart <= existingLeave.End_Date__c) &&(newEnd >= existingLeave.Start_Date__c)){
                         return true; 
                     }
@@ -55,6 +56,19 @@ public with sharing class LeaveTriggerHandler{
             }
         }
         return false;
+    }
+/********************************************************************************************************************
+    *@Author:          CRM Team Innovation
+    *@methodName:      isEffectivelyActive
+    *@Description:     Helper method to determine if a leave is effectively "Active" based on Status and Dates.
+    *                  Logic: Status is Approved AND Today is between Start and End Date.
+     **********************************************************************************************************************/
+    private static Boolean isEffectivelyActive(Leave__c leave){
+        if(leave==null||leave.Status__c != 'Approved'||leave.Start_Date__c==null||leave.End_Date__c==null){
+            return false;
+        }
+        Date today=Date.today();
+        return(leave.Start_Date__c <= today&&leave.End_Date__c >= today);
     }
     /****************************************************************************************************************************
 *@Author:         CRM Team Innovation
@@ -105,18 +119,18 @@ public with sharing class LeaveTriggerHandler{
         }
         Map<Id,Decimal> earnedBookedMap=new Map<Id,Decimal>();
         Map<Id,Decimal> sickBookedMap=new Map<Id,Decimal>();
-        List<AggregateResult> bookedLeaves=[
-            SELECT
-                OwnerId,
-                Leave_Type__c,
-                SUM(Days_Taken__c) sumDays
-            FROM
+         List<AggregateResult> bookedLeaves=[
+            SELECT 
+                OwnerId,Leave_Type__c,SUM(Days_Taken__c) sumDays
+            FROM 
                 Leave__c
-            WHERE
+            WHERE 
                 OwnerId IN :ownerIds
-            AND
+            AND 
                 Leave_Type__c IN('Earned_Leave','Sick_Leave')
-            GROUP BY
+            AND 
+                Status__c NOT IN('Rejected','Pending')
+            GROUP BY 
                 OwnerId,Leave_Type__c
         ];
         for(AggregateResult ar:bookedLeaves){
@@ -143,20 +157,24 @@ public with sharing class LeaveTriggerHandler{
                 contextIds.add(nl.Id);
             }
         }
+        Date today=Date.today();
         Map<Id,Boolean> ownerHasActiveExistingLeave=new Map<Id,Boolean>();
         List<AggregateResult> activeLeaves=[
-            SELECT
-                OwnerId,
-                COUNT(Id) activeCount
-            FROM
+            SELECT 
+                OwnerId,COUNT(Id) activeCount
+            FROM 
                 Leave__c
-            WHERE
+            WHERE 
                 OwnerId IN :ownerIds
-            AND
+            AND 
                 Id NOT IN :contextIds
-            AND
-                Status__c='Active'
-            GROUP BY
+            AND 
+                Status__c='Approved'
+            AND 
+                Start_Date__c <= :today
+            AND 
+                End_Date__c >= :today
+            GROUP BY 
                 OwnerId
         ];
         for(AggregateResult ar:activeLeaves){
@@ -180,7 +198,7 @@ public with sharing class LeaveTriggerHandler{
             AND
                 Id NOT IN :contextIds
             AND
-                Status__c IN('Approved','Pending','Active')
+                Status__c IN('Approved','Pending')
         ];
         for(Leave__c leave:existingLeavesList){
             if(!ownerExistingLeavesMap.containsKey(leave.OwnerId)){
@@ -189,20 +207,20 @@ public with sharing class LeaveTriggerHandler{
             ownerExistingLeavesMap.get(leave.OwnerId).add(leave);
         }
         for(Leave__c leave:newLeaves){
-            if(leave.OwnerId==null){
-                continue;
-            }
-            Boolean isActiveLeave=(leave.Status__c!=null&&leave.Status__c=='Active');
-            if(isActiveLeave){
-                Boolean hasOtherActive=ownerHasActiveExistingLeave.get(leave.OwnerId);
-                if(hasOtherActive==true){
+            if(leave.OwnerId==null) continue;
+            // Check Multiple Active Leaves
+            Boolean isNewActive=isEffectivelyActive(leave);
+            if(isNewActive){
+                if(ownerHasActiveExistingLeave.get(leave.OwnerId)){
+                    leave.addError('Only one active leave record is allowed per employee.');
                 }
             }
-            if(leave.Start_Date__c!=null&&leave.End_Date__c!=null){
+            if(leave.Start_Date__c != null&&leave.End_Date__c != null){
                 Integer numberOfDays=calculateBusinessDays(leave.Start_Date__c,leave.End_Date__c);
+                // Balance Check
                 if(leave.Leave_Type__c=='Earned_Leave'||leave.Leave_Type__c=='Sick_Leave'){
                     Leave_Balance__c balance=balanceMap.get(leave.OwnerId);
-                    if(balance!=null){
+                    if(balance != null){
                         Decimal bookedEarned=earnedBookedMap.get(leave.OwnerId);
                         Decimal bookedSick=sickBookedMap.get(leave.OwnerId);
                         Decimal earnedTotal=balance.Earned_Leave__c;
@@ -211,13 +229,13 @@ public with sharing class LeaveTriggerHandler{
                             Decimal availableBalance=earnedTotal - bookedEarned;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
-                                leave.addError('Please apply for Unpaid Leave becuase insufficient Earned Leave balance. Available: '+availableBalance+' day(s). Requested: '+numberOfDays+' day(s).');
+                                leave.addError('Please apply for Unpaid Leave because insufficient Earned Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
                             }
                         } else if(leave.Leave_Type__c=='Sick_Leave'){
                             Decimal availableBalance=sickTotal - bookedSick;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
-                                leave.addError('Please apply for Unpaid Leave becuase insufficient Sick Leave balance. Available: '+availableBalance+' day(s). Requested: '+numberOfDays+' day(s).');
+                                leave.addError('Please apply for Unpaid Leave because insufficient Sick Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
                             }
                         }
                     } else{
@@ -225,38 +243,11 @@ public with sharing class LeaveTriggerHandler{
                         continue;
                     }
                 }
-                if(oldMap==null ||(oldMap!=null &&(leave.Status__c=='Pending'||leave.Status__c=='Approved'))){
+                if(oldMap==null||(oldMap != null &&(leave.Status__c=='Pending'||leave.Status__c=='Approved'))){
                     List<Leave__c> existingApprovedLeaves=ownerExistingLeavesMap.get(leave.OwnerId);
-                    if(existingApprovedLeaves!=null&&!existingApprovedLeaves.isEmpty()){
+                    if(existingApprovedLeaves != null&&!existingApprovedLeaves.isEmpty()){
                         if(checkForOverlappingDates(leave,existingApprovedLeaves)){
-                            leave.addError('You already have leave in this time period('+
-                                existingApprovedLeaves[0].Start_Date__c+' to '+existingApprovedLeaves[0].End_Date__c+'). '+
-                                'You cannot apply for more leave in the same time period.');
-                        }
-                    }
-                }
-                if(isActiveLeave){
-                   
-                    List<Leave__c> allActiveLeaves=[
-                        SELECT 
-                            Id,OwnerId,Status__c,Start_Date__c,End_Date__c
-                        FROM 
-                            Leave__c
-                        WHERE 
-                            OwnerId=:leave.OwnerId
-                        AND 
-                            Status__c='Active'
-                        AND 
-                            Id NOT IN :contextIds
-                    ];
-                    if(!allActiveLeaves.isEmpty()){
-                       
-                        for(Leave__c activeLeave:allActiveLeaves){
-                            if((leave.Start_Date__c <= activeLeave.End_Date__c)&&
-                        (leave.End_Date__c >= activeLeave.Start_Date__c)){
-                                leave.addError('Only one active leave record is allowed per employee.');
-                                break;
-                            }
+                            leave.addError('You already have leave in this time period. You cannot apply for more leave in the same time period.');
                         }
                     }
                 }
@@ -311,9 +302,9 @@ public with sharing class LeaveTriggerHandler{
 *@Description: Helper method to query Case records and return a list
  **************************************************************************************************************************/
 private static List<Case> getCases(Set<Id> ownerIds,Boolean isDelegated){
-    String query = 'SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
+    String query='SELECT Id,CaseNumber,OwnerId,Orginal_Owner_Id__c,Subject,Status,Priority,Type,Is_delegated__c,Previous_Owner_Id__c FROM Case WHERE OwnerId IN :ownerIds AND IsClosed=false';
     if(isDelegated != null){
-        query += ' AND Is_delegated__c = :isDelegated';
+        query += ' AND Is_delegated__c=:isDelegated';
      }
     return Database.query(query);
 }
@@ -332,9 +323,12 @@ private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id origin
         return;
     }
     for(Case c:casesToUpdate){
-        c.OwnerId           =newOwner;
-        c.Orginal_Owner_Id__c=originalOwner;
-        c.Is_delegated__c   =isDelegated;
+        c.OwnerId=newOwner;
+        c.Previous_Owner_Id__c=originalOwner;
+        if(c.Orginal_Owner_Id__c==null&&originalOwner != null){
+            c.Orginal_Owner_Id__c=originalOwner;
+        }
+        c.Is_delegated__c=isDelegated;
     }
 }
 /************************************************************************************************************************
@@ -344,7 +338,7 @@ private static void reassignCases(List<Case> casesToUpdate,Id newOwner,Id origin
  **************************************************************************************************************************/
 private static String buildCaseSummaryLines(List<Case> casesList){
     String body='';
-    String baseUrl = URL.getOrgDomainUrl().toExternalForm();
+    String baseUrl=URL.getOrgDomainUrl().toExternalForm();
     if(casesList==null){
         return body;
     }
@@ -365,29 +359,32 @@ private static String buildCaseSummaryLines(List<Case> casesList){
 *@Description: Helper method to determine which users from a given set are currently on an active leave.
 *              Returns a map of UserId -> IsOnLeave(Boolean).
  **************************************************************************************************************************/
-private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
-    Map<Id, Boolean> userOnLeaveMap = new Map<Id, Boolean>();
-    // Initialize all users in the set to be not on leave by default
-    for (Id userId : userIds) {
-        userOnLeaveMap.put(userId, false);
+    private static Map<Id,Boolean> getUsersOnLeave(Set<Id> userIds){
+        Map<Id,Boolean> userOnLeaveMap=new Map<Id,Boolean>();
+        for(Id userId:userIds){
+            userOnLeaveMap.put(userId,false);
+        }
+        Date today=Date.today();
+        List<Leave__c> activeLeaves=[
+            SELECT 
+                OwnerId
+            FROM 
+                Leave__c
+            WHERE 
+                OwnerId IN :userIds
+            AND 
+                Status__c='Approved'
+            AND 
+                Start_Date__c <= :today
+            AND 
+                End_Date__c >= :today
+        ];
+        for(Leave__c leave:activeLeaves){
+            userOnLeaveMap.put(leave.OwnerId,true);
+        }
+        return userOnLeaveMap;
     }
-    // Find all active leaves for the given users
-    List<Leave__c> activeLeaves = [
-        SELECT 
-            OwnerId
-        FROM 
-            Leave__c
-        WHERE 
-            OwnerId IN :userIds
-        AND 
-            Status__c = 'Active'
-    ];
-    // Mark users with active leaves as on leave
-    for (Leave__c leave : activeLeaves) {
-        userOnLeaveMap.put(leave.OwnerId, true);
-    }
-    return userOnLeaveMap;
-}
+
     /********************************************************************************************************************
     *@Author:          CRM Team Innovation
     *@methodName:      handleAfterDelete
@@ -395,53 +392,50 @@ private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
     *@Description:     Handle case reassignment when active leave is deleted
      **********************************************************************************************************************/
     public static void handleAfterDelete(List<Leave__c> oldLeaves){
-        if(oldLeaves == null || oldLeaves.isEmpty()) return;
-        List<Leave__c> dummyNewLeaves = new List<Leave__c>();
-        Map<Id, Leave__c> oldMap = new Map<Id, Leave__c>();
-        
-        for(Leave__c lv : oldLeaves){
-            if(lv.Status__c == 'Active'){
-                Leave__c dummyNew = lv.clone(true);
-                dummyNew.Status__c = 'Inactive';
+        if(oldLeaves==null||oldLeaves.isEmpty()) return;
+        List<Leave__c> dummyNewLeaves=new List<Leave__c>();
+        Map<Id,Leave__c> oldMap=new Map<Id,Leave__c>();
+        for(Leave__c lv:oldLeaves){
+            // If the deleted leave was effectively active,we simulate a transition to inactive
+            if(isEffectivelyActive(lv)){
+                Leave__c dummyNew=lv.clone(true);
+                dummyNew.Status__c='Rejected'; // Change status to something not active
                 dummyNewLeaves.add(dummyNew);
-                oldMap.put(lv.Id, lv);
+                oldMap.put(lv.Id,lv);
             }
         }
         if(!dummyNewLeaves.isEmpty()){
-            handleAfterUpdate(dummyNewLeaves, oldMap);
+            handleAfterUpdate(dummyNewLeaves,oldMap);
         }
     }
-    /************************************************************************************************************************
+/************************************************************************************************************************
 *@Author:      CRM Team Innovation
 *@methodName:  handleAfterUpdate
 *@param:       newLeaves-List of Leave__c records after update
 *@param:       oldMap-Map of Leave__c records before update
 *@Description: Handle case reassignment when leave status changes to Active or Inactive
-*              - 1 User query total
-*              - 1 Case query total(via getCases)
-*              - All logic driven from maps
  **************************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves,Map<Id,Leave__c> oldMap){
         if(newLeaves==null||newLeaves.isEmpty()||oldMap==null||oldMap.isEmpty()){
             return;
         }
-        // 1. Identify activated and inactivated leaves(status changes)
+        // 1. Identify activated and inactivated leaves(Effective Status changes)
         List<Leave__c> activatedLeaves=new List<Leave__c>();
         List<Leave__c> inactivatedLeaves=new List<Leave__c>();
         for(Leave__c newLeave:newLeaves){
             Leave__c oldLeave=oldMap.get(newLeave.Id);
-            if(oldLeave==null){
-                continue;
-            }
-            if(newLeave.Status__c=='Active'&&oldLeave.Status__c!='Active'){
+            if(oldLeave==null) continue;
+            Boolean isNewActive=isEffectivelyActive(newLeave);
+            Boolean isOldActive=isEffectivelyActive(oldLeave);
+            if(isNewActive&&!isOldActive){
                 activatedLeaves.add(newLeave);
-            } else if(newLeave.Status__c=='Inactive'&&oldLeave.Status__c!='Inactive'){
+            } else if(!isNewActive&&isOldActive){
                 inactivatedLeaves.add(newLeave);
             }
         }
-    if(activatedLeaves.isEmpty()&&inactivatedLeaves.isEmpty()){
-        return;
-    }
+        if(activatedLeaves.isEmpty()&&inactivatedLeaves.isEmpty()){
+            return;
+        }
     // 2. Collect all involved owner Ids(both Active and Inactive)
     Set<Id> activeOwnerIds=new Set<Id>();
     Set<Id> inactiveOwnerIds=new Set<Id>();
@@ -466,24 +460,24 @@ private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
     // 3.2 Build owner -> delegate map from allUserMap
     Map<Id,Id> ownerToDelegateMap=new Map<Id,Id>();
     Set<Id> delegateIds=new Set<Id>();
-    for (User u : allUserMap.values()){
-        if (allOwnerIds.contains(u.Id)){
+    for(User u:allUserMap.values()){
+        if(allOwnerIds.contains(u.Id)){
             ownerToDelegateMap.put(u.Id,u.DelegatedApproverId);
-            if (u.DelegatedApproverId!=null){
+            if(u.DelegatedApproverId!=null){
                 delegateIds.add(u.DelegatedApproverId);
             }
         }
     }
-    // 4. SINGLE Case query – via getCases
+    // 4.  Case query – via getCases
     Set<Id> caseOwnerIds=new Set<Id>();
     caseOwnerIds.addAll(allOwnerIds);
     caseOwnerIds.addAll(delegateIds);
     List<Case> allOpenCases=getCases(caseOwnerIds,null);
-    // 4.1 Get all cases that are currently delegated (Is_delegated__c = true)
-    List<Case> delegatedCases = getCases(caseOwnerIds, true);
+    // 4.1 Get all cases that are currently delegated(Is_delegated__c=true)
+    List<Case> delegatedCases=getCases(caseOwnerIds,true);
     // Group all cases by current owner
     Map<Id,List<Case>> ownerToCasesMap=new Map<Id,List<Case>>();
-    Set<Id> processedCaseIds = new Set<Id>();
+    Set<Id> processedCaseIds=new Set<Id>();
     for(Case c:allOpenCases){
         // Skip if we've already processed this case ID to prevent duplicates
         if(processedCaseIds.contains(c.Id)){
@@ -508,30 +502,28 @@ private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
     // For cases that need to be reassigned to queue because delegate went on leave
     List<Case> casesToReassignToQueue=new List<Case>();
     // Set to track which cases have already been added to allCasesToUpdate to prevent duplicates
-    Set<Id> addedCaseIds = new Set<Id>();
-    // 6. Determine who is currently on leave (both owners and their delegates)
-    Set<Id> leaveCheckIds = new Set<Id>();
+    Set<Id> addedCaseIds=new Set<Id>();
+    // 6. Determine who is currently on leave(both owners and their delegates)
+    Set<Id> leaveCheckIds=new Set<Id>();
     leaveCheckIds.addAll(allOwnerIds);
     leaveCheckIds.addAll(delegateIds);
-    Map<Id, Boolean> isOnLeave = getUsersOnLeave(leaveCheckIds);
-
+    Map<Id,Boolean> isOnLeave=getUsersOnLeave(leaveCheckIds);
     // 7. Scenario: Check for cases that need to be reassigned to queue because their delegate is now on leave
-    Id caseQueueId = [SELECT 
+    Id caseQueueId=[SELECT 
                         Id 
                     FROM 
                         Group 
                     WHERE 
-                        Name = 'Case Queue'
+                        Name='Case Queue'
                     LIMIT 1].Id;
-    if(caseQueueId != null && !delegateIds.isEmpty()) {
-        for(Case c : delegatedCases) {
-            // Check if the current delegate is on leave
-            if(isOnLeave.get(c.OwnerId) == true) {
-                // This case was delegated to someone who is now on leave
+    if(caseQueueId != null&&!delegateIds.isEmpty()){
+        for(Case c:delegatedCases){
+            c.Previous_Owner_Id__c=c.OwnerId;
+            if(isOnLeave.get(c.OwnerId)==true){
                 c.OwnerId=caseQueueId;
                 c.Is_delegated__c=true;
                 // Only process each case once to avoid duplicates
-                if(!addedCaseIds.contains(c.Id)) {
+                if(!addedCaseIds.contains(c.Id)){
                     casesToReassignToQueue.add(c);
                     allCasesToUpdate.add(c);
                     addedCaseIds.add(c.Id);
@@ -548,13 +540,13 @@ private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
                 continue;
             }
             Id delegateId=ownerToDelegateMap.get(ownerId);
-            if(delegateId!=null && !isOnLeave.get(delegateId)) {
+            if(delegateId!=null&&!isOnLeave.get(delegateId)){
                 // Reassign all of this owner's cases to delegate in memory
                 List<Case> casesForThisOwner=new List<Case>(userCases);
                 reassignCases(casesForThisOwner,delegateId,ownerId,true);
                 // Only add to allCasesToUpdate if not already added
-                for(Case c : casesForThisOwner) {
-                    if(!addedCaseIds.contains(c.Id)) {
+                for(Case c:casesForThisOwner){
+                    if(!addedCaseIds.contains(c.Id)){
                         allCasesToUpdate.add(c);
                         addedCaseIds.add(c.Id);
                     }
@@ -566,63 +558,74 @@ private static Map<Id, Boolean> getUsersOnLeave(Set<Id> userIds) {
                 }
                 delegateBucket.addAll(casesForThisOwner);
             } else{
-                // No delegate OR delegate is on leave: these will go to queue
                 casesToMoveToQueue.addAll(userCases);
             }
         }
     }
     // 9. Scenario – Owner goes Inactive(return delegated cases)
+    // Priority: Try to return to Orginal_Owner_Id__c first. If not available(null or user still on leave),
     if(!inactiveOwnerIds.isEmpty()){
-        // Find all cases that were delegated FROM any of the inactive owners.
-        // This is simpler and more robust than iterating through delegates.
-        // It correctly finds cases whether they are with a delegate or in a queue.
-        List<Case> casesToReturn = [
+        // Cases delegated from any of the inactive owners
+        List<Case> casesToReturn=[
             SELECT 
-                Id, OwnerId, Orginal_Owner_Id__c, Is_delegated__c, CaseNumber, Subject, Status, Priority, Type
+                Id,OwnerId,Orginal_Owner_Id__c,Previous_Owner_Id__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type
             FROM 
                 Case
             WHERE 
-                Orginal_Owner_Id__c 
-            IN 
-                :inactiveOwnerIds 
+                (Orginal_Owner_Id__c IN :inactiveOwnerIds OR Previous_Owner_Id__c IN :inactiveOwnerIds)
             AND 
-                Is_delegated__c = true 
+                Is_delegated__c=true 
             AND 
-                IsClosed = false
+                IsClosed=false
         ];
-        if (!casesToReturn.isEmpty()) {
-            for (Case c : casesToReturn) {
-                Id originalOwnerId = c.Orginal_Owner_Id__c;
-                // Set fields for reassignment
-                c.OwnerId = originalOwnerId;
-                c.Orginal_Owner_Id__c = null;
-                c.Is_delegated__c = false;
-
-                // Add to the master list for DML update, checking for duplicates
-                if(!addedCaseIds.contains(c.Id)) {
-                    allCasesToUpdate.add(c);
-                    addedCaseIds.add(c.Id);
+        if(!casesToReturn.isEmpty()){
+            for(Case c:casesToReturn){
+                Boolean handled=false;
+                Id originalOwnerId=c.Orginal_Owner_Id__c;
+                // Check if the Id of owner of that leave is on Orginal_Owner_Id_c
+                if(originalOwnerId != null&&inactiveOwnerIds.contains(originalOwnerId)){
+                    if(isOnLeave.containsKey(originalOwnerId) ? !isOnLeave.get(originalOwnerId):true){
+                        c.OwnerId=originalOwnerId;
+                        c.Is_delegated__c=false;
+                        handled=true;
+                    }
                 }
-
-                // Add to map for email notifications
-                List<Case> originalBucket = originalOwnerToCasesReturnedMap.get(originalOwnerId);
-                if (originalBucket == null) {
-                    originalBucket = new List<Case>();
-                    originalOwnerToCasesReturnedMap.put(originalOwnerId, originalBucket);
+                // if not ,then check for the Previous_Owner_Id__c field
+                if(!handled&&c.Previous_Owner_Id__c != null&&inactiveOwnerIds.contains(c.Previous_Owner_Id__c)){
+                    if(isOnLeave.containsKey(c.Previous_Owner_Id__c) ? !isOnLeave.get(c.Previous_Owner_Id__c):true){
+                        c.OwnerId=c.Previous_Owner_Id__c;
+                        c.Is_delegated__c=true;
+                        handled=true;
+                    }
                 }
-                originalBucket.add(c);
+                if(handled){
+                    if(!addedCaseIds.contains(c.Id)){
+                        allCasesToUpdate.add(c);
+                        addedCaseIds.add(c.Id);
+                    }
+                    // Email buckets: if returned to original owner(not delegated)
+                    if(!c.Is_delegated__c&&originalOwnerId != null){
+                        List<Case> originalBucket=originalOwnerToCasesReturnedMap.get(originalOwnerId);
+                        if(originalBucket==null){
+                            originalBucket=new List<Case>();
+                            originalOwnerToCasesReturnedMap.put(originalOwnerId,originalBucket);
+                        }
+                        originalBucket.add(c);
+                    }
+                }
             }
         }
     }
     // 10. Cases with no delegate or delegate on leave → Case_Queue
-    if(caseQueueId != null && !casesToMoveToQueue.isEmpty()){
-        for (Case c : casesToMoveToQueue){
-            Id originalOwnerId = c.OwnerId;
+    if(caseQueueId != null&&!casesToMoveToQueue.isEmpty()){
+        for(Case c:casesToMoveToQueue){
+            Id originalOwnerId=c.OwnerId;
             c.OwnerId=caseQueueId;
             c.Is_delegated__c=true;
-            c.Orginal_Owner_Id__c=originalOwnerId;
-            // Only add to allCasesToUpdate if not already added
-            if(!addedCaseIds.contains(c.Id)) {
+            if(c.Orginal_Owner_Id__c==null){
+                c.Orginal_Owner_Id__c=originalOwnerId;
+            }
+            if(!addedCaseIds.contains(c.Id)){
                 allCasesToUpdate.add(c);
                 addedCaseIds.add(c.Id);
             }

@@ -11,8 +11,8 @@
     transition:transform 2.2s;
 }
 .dashboard-card:hover{
-    transform:translateY(20px);
-    transition-duration: 1.2s;
+    transform:translateY(-10px);
+    transition-duration: 0.2s;
     box-shadow:0 4px 12px rgba(0,0,0,0.08);
 }
 .card-icon-row{
