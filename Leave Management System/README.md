@@ -101,8 +101,6 @@ Grants users the necessary CRUD permissions for `Leave__c`, `Leave_Balance__c`, 
 │   ├── CaseTriggerHandler.cls
 │   ├── LeaveController.cls (+ Test)
 │   └── LeaveTriggerHandler.cls (+ Test)
-├── flows/
-│   └── Update_Status_Schedule_path_flow.flow-meta.xml
 ├── lwc/
 │   └── leaveSummary/
 ├── objects/
