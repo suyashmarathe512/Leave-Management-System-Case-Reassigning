@@ -10,7 +10,6 @@ The system is built on a standard Salesforce declarative and programmatic model:
 -   **Automation Layer (Triggers & Flows)**:
     -   An Apex trigger on `Leave__c` (`LeaveTrigger`) manages leave-related logic.
     -   An Apex trigger on `Case` (`CaseTrigger`) handles automatic case reassignment for users on leave.
-    -   A Flow (`Update_Status_Schedule_path_flow`) manages time-based status updates for leave requests.
 -   **Service Layer (Apex Classes)**: Handler classes (`LeaveTriggerHandler`, `CaseTriggerHandler`) contain the core logic, and a controller (`LeaveController`) provides methods for the UI.
 -   **Presentation Layer (UI)**: A Lightning Web Component (`leaveSummary`) displays leave information to users.
 -   **Security Layer (Permission Set)**: A permission set (`Leave_Object_access`) grants access to the system's features.
@@ -66,15 +65,6 @@ The standard Case object is customized to support automatic reassignment.
 -   **`CaseTriggerHandler.cls`**:
     -   `trackPreviousOwner`: Before a case is updated, it records the previous owner in `Previous_Owner_Id__c` if the owner is being changed.
     -   `reassignCasesForUsersOnLeave`: After a case is created or updated, it checks if the owner is on an active, approved leave. If so, it cleverly re-uses the `LeaveTriggerHandler`'s reassignment logic to delegate the case to the user's manager, marking the case as delegated.
-
-### Flow: Update_Status_Schedule_path_flow
-
--   **Purpose**: Manages time-based updates to leave statuses.
--   **Logic**: This scheduled-path flow automatically updates the `Leave__c.Status__c` field based on dates.
-    -   Example: If `Start_Date__c` is today and `Status__c` is 'Approved', it changes the status to 'In Progress'.
-    -   Example: If `End_Date__c` has passed and `Status__c` is 'In Progress', it changes the status to 'Completed'.
-
----
 
 ## Presentation Layer (LWC)
 
