@@ -286,7 +286,16 @@ public with sharing class LeaveTriggerHandler{
      **************************************************************************************************************************/
    private static Map<Id,User> getUserMap(Set<Id> ownerIds){
     Set<Id> delegateIds = new Set<Id>();
-    for(User u : [SELECT DelegatedApproverId FROM User WHERE Id IN :ownerIds AND DelegatedApproverId != null]) {
+    for(User u : [SELECT 
+                        DelegatedApproverId 
+                    FROM 
+                        User 
+                    WHERE 
+                        Id 
+                    IN 
+                        :ownerIds 
+                    AND 
+                        DelegatedApproverId != null]) {
         delegateIds.add(u.DelegatedApproverId);
     }
     
