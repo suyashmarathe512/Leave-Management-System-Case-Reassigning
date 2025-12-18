@@ -1,9 +1,9 @@
 
 trigger CaseTrigger on Case(before update,after insert,after update){
     if(Trigger.isBefore){
-        if(Trigger.isUpdate){
-            CaseTriggerHandler.trackPreviousOwner(Trigger.new,Trigger.oldMap);
-        }
+        // if(Trigger.isUpdate){
+        //     CaseTriggerHandler.trackPreviousOwner(Trigger.new,Trigger.oldMap);
+        // }
     }
     if(Trigger.isAfter){
         if(Trigger.isInsert){

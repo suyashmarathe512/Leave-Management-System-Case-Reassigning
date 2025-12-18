@@ -1,70 +1,62 @@
 @isTest
 public class LeaveTriggerHandlerTest{
-    private static final String EARNED_LEAVE='Earned_Leave';
-    private static final String SICK_LEAVE='Sick_Leave';
-    private static final String UNPAID_LEAVE='Unpaid_Leave';
-    private static final String PENDING_STATUS='Pending';
-    private static final String APPROVED_STATUS='Approved';
-    private static final String REJECTED_STATUS='Rejected';
+    private static final String EARNED_LEAVE = 'Earned_Leave';
+    private static final String SICK_LEAVE = 'Sick_Leave';
+    private static final String UNPAID_LEAVE = 'Unpaid_Leave';
+    private static final String PENDING_STATUS = 'Pending';
+    private static final String APPROVED_STATUS = 'Approved';
+    private static final String REJECTED_STATUS = 'Rejected';
+
     @testSetup
     static void setupTestData(){
-        User testUser=new User(
-            FirstName='Test',
-            LastName='User',
+        User stdProfileUser = new User(
+            FirstName='Test', LastName='User',
             Email='testuser@example.com',
             Username='testu432ser@example.com.test',
             ProfileId=[SELECT Id FROM Profile WHERE Name='Standard User' LIMIT 1].Id,
-            IsActive=true,
-            Alias='tuser',
+            IsActive=true, Alias='tuser',
             TimeZoneSidKey='America/Los_Angeles',
-            LocaleSidKey='en_US',
-            EmailEncodingKey='UTF-8',
+            LocaleSidKey='en_US', EmailEncodingKey='UTF-8',
             LanguageLocaleKey='en_US'
         );
-        insert testUser;
-        User delegatedUser=new User(
-            FirstName='Delegated',
-            LastName='User',
+        insert stdProfileUser;
+
+        User delegatedUser = new User(
+            FirstName='Delegated', LastName='User',
             Email='delegated@example.com',
             Username='deleg432ated@example.com.test',
             ProfileId=[SELECT Id FROM Profile WHERE Name='Standard User' LIMIT 1].Id,
-            IsActive=true,
-            Alias='duser',
+            IsActive=true, Alias='duser',
             TimeZoneSidKey='America/Los_Angeles',
-            LocaleSidKey='en_US',
-            EmailEncodingKey='UTF-8',
+            LocaleSidKey='en_US', EmailEncodingKey='UTF-8',
             LanguageLocaleKey='en_US'
         );
         insert delegatedUser;
-        testUser.DelegatedApproverId=delegatedUser.Id;
-        update testUser;
-        User adminUser=new User(
-            FirstName='Admin',
-            LastName='User',
+
+        stdProfileUser.DelegatedApproverId = delegatedUser.Id;
+        update stdProfileUser;
+
+        User adminUser = new User(
+            FirstName='Admin', LastName='User',
             Email='admin@example.com',
             Username='admin432user@example.com.test',
             ProfileId=[SELECT Id FROM Profile WHERE Name='System Administrator' LIMIT 1].Id,
-            IsActive=true,
-            Alias='auser',
+            IsActive=true, Alias='auser',
             TimeZoneSidKey='America/Los_Angeles',
-            LocaleSidKey='en_US',
-            EmailEncodingKey='UTF-8',
+            LocaleSidKey='en_US', EmailEncodingKey='UTF-8',
             LanguageLocaleKey='en_US'
         );
         insert adminUser;
-        adminUser.DelegatedApproverId=delegatedUser.Id;
+
+        adminUser.DelegatedApproverId = delegatedUser.Id;
         update adminUser;
-        Leave_Balance__c balance=new Leave_Balance__c(
-            SetupOwnerId=testUser.Id,
+
+        // Leave balances
+        insert new Leave_Balance__c(
+            SetupOwnerId=stdProfileUser.Id,
             Earned_Leave__c=100,
             Sick_Leave__c=100
         );
-        insert balance;
-        Group testQueue=new Group(
-            Name='Case_Queue',
-            Type='Queue'
-        );
-        insert testQueue;
     }
     @isTest
     static void testHandleBeforeInsertUpdate_SufficientEarnedLeaveBalance(){
@@ -197,7 +189,8 @@ public class LeaveTriggerHandlerTest{
             Test.startTest();
             Database.SaveResult result=Database.insert(secondLeave,false);
             Test.stopTest();
-            System.assertNotEquals(null,result,'Result should not be null');
+            // Simplified test - just verify no exception thrown, handler handles multiple active leaves gracefully
+            System.assert(result.isSuccess(), 'Multiple active leaves should not cause exceptions in handler');
         }
     }
     @isTest
@@ -308,8 +301,7 @@ public class LeaveTriggerHandlerTest{
             Leave__c toUpdate=new Leave__c(Id=leave.Id,Status__c=APPROVED_STATUS);
             update toUpdate;
             Test.stopTest();
-            System.debug('Email invocations after activation: ' + Limits.getEmailInvocations());
-            System.assertEquals(1,Limits.getEmailInvocations(),
+            System.assertEquals(1, Limits.getEmailInvocations(),
                 'One email should be sent to delegated user');
         }
     }
@@ -359,8 +351,7 @@ public class LeaveTriggerHandlerTest{
             Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=REJECTED_STATUS);
             Database.SaveResult result=Database.update(toInactive,false);
             Test.stopTest();
-            System.debug('Email invocations after inactivation: ' + Limits.getEmailInvocations());
-            System.assertEquals(true,result.isSuccess(),'Admin should be able to inactivate leave');
+            System.assertEquals(true, result.isSuccess(), 'Admin should be able to inactivate leave');
         }
     }
     @isTest
@@ -416,9 +407,8 @@ public class LeaveTriggerHandlerTest{
             Leave__c toInactive=new Leave__c(Id=leave.Id,Status__c=REJECTED_STATUS);
             Database.update(toInactive,false);
             Test.stopTest();
-            System.debug('Email invocations after inactivation (2nd test): ' + Limits.getEmailInvocations());
-            System.assertEquals(2,Limits.getEmailInvocations(),
-                'Two emails should be sent (one to original user,one to delegated user)');
+            System.assertEquals(2, Limits.getEmailInvocations(),
+                'Two emails should be sent (one to original user, one to delegated user)');
         }
     }
     @isTest
