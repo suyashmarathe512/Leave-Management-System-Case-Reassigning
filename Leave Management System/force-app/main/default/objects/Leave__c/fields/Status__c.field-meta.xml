@@ -29,11 +29,13 @@
             <value>
                 <fullName>Active</fullName>
                 <default>false</default>
+                <isActive>false</isActive>
                 <label>Active</label>
             </value>
             <value>
                 <fullName>Inactive</fullName>
                 <default>false</default>
+                <isActive>false</isActive>
                 <label>Inactive</label>
             </value>
         </valueSetDefinition>

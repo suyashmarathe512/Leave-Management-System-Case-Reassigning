@@ -1,22 +1,9 @@
+/*******************************************************************************************************************
+ * @Author:          CRM Team Innovation
+ * @ClassName:       CaseTriggerHandler
+ * @Description:     This class calls the processActivaiton if OnLeave User gets cases.
+ ****************************************************************************************************************/
 public with sharing class CaseTriggerHandler{
-/********************************************************************************************************************
- *@Author:          CRM Team Innovation
- *@methodName:      trackPreviousOwner
- *@param:           newCases - List of Case (Trigger.new)
- *@param:           oldMap   - Map<Id,Case> (Trigger.oldMap)
- *@Description:     BEFORE UPDATE helper. If OwnerId changes,stamp Previous_Owner_Id__c from old OwnerId.
- *                  Must not modify Orginal_Owner__c here or anywhere in this method.
- **********************************************************************************************************************/
-public static void trackPreviousOwner(List<Case> newCases,Map<Id,Case> oldMap){
-    if (newCases==null||newCases.isEmpty()||oldMap==null||oldMap.isEmpty()) return;
-    for (Case c:newCases){
-        Case oldC=oldMap.get(c.Id);
-        if (oldC==null) continue;
-        if (c.OwnerId!=oldC.OwnerId&&oldC.OwnerId!=null){
-            c.Previous_Owner_Id__c=oldC.OwnerId;
-        }
-    }
-}
 /********************************************************************************************************************
  *@Author:          CRM Team Innovation
  *@methodName:      reassignCasesForUsersOnLeave
@@ -26,13 +13,12 @@ public static void trackPreviousOwner(List<Case> newCases,Map<Id,Case> oldMap){
   **********************************************************************************************************************/
     public static void reassignCasesForUsersOnLeave(List<Case> newCases){
         Set<Id> ownerIds=new Set<Id>();
-        for (Case c:newCases){
-            // Only check for user-owned cases, not queue-owned
-            if (c.OwnerId != null && String.valueOf(c.OwnerId).startsWith('005')) {
+        for(Case c:newCases){
+            if(c.OwnerId!=null&&String.valueOf(c.OwnerId).startsWith('005')){
                 ownerIds.add(c.OwnerId);
             }
         }
-        if (!ownerIds.isEmpty()){
+        if(!ownerIds.isEmpty()){
             Date today=Date.today();
             List<Leave__c> leaves=[SELECT 
                                         Id,OwnerId
@@ -47,17 +33,15 @@ public static void trackPreviousOwner(List<Case> newCases,Map<Id,Case> oldMap){
                                     AND 
                                         End_Date__c>=:today];
             if(!leaves.isEmpty()){
-                List<Case> casesToUpdate = new List<Case>();
-                Map<Id, List<Case>> emailsForDelegates = new Map<Id, List<Case>>();
-                CaseReassignment.processActivations(leaves, casesToUpdate, emailsForDelegates);
-                if (!casesToUpdate.isEmpty()) {
-                    // Use a map to deduplicate cases before update to prevent errors.
-                    Map<Id, Case> finalCasesToUpdate = new Map<Id, Case>(casesToUpdate);
+                List<Case> casesToUpdate=new List<Case>();
+                Map<Id,List<Case>> emailsForDelegates=new Map<Id,List<Case>>();
+                CaseReassignment.processActivations(leaves,casesToUpdate,emailsForDelegates);
+                if(!casesToUpdate.isEmpty()){
+                    Map<Id,Case> finalCasesToUpdate=new Map<Id,Case>(casesToUpdate);
                     update finalCasesToUpdate.values();
                 }
-
-                if (emailsForDelegates != null && !emailsForDelegates.isEmpty()) {
-                    CaseReassignment.sendAllNotifications(emailsForDelegates, null, null);
+                if(emailsForDelegates!=null&&!emailsForDelegates.isEmpty()){
+                    CaseReassignment.sendAllNotifications(emailsForDelegates,null,null);
                 }
             }
         }

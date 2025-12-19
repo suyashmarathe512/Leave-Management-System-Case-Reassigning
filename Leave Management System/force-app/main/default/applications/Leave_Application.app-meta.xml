@@ -18,6 +18,7 @@
     <tabs>Leave_Portal</tabs>
     <tabs>Leave__c</tabs>
     <tabs>standard-Case</tabs>
+    <tabs>Cases_Report</tabs>
     <uiType>Lightning</uiType>
     <utilityBar>Leave_Application_UtilityBar</utilityBar>
 </CustomApplication>

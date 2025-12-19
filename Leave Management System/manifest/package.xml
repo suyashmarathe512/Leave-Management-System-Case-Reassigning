@@ -6,7 +6,7 @@
 	</types>
 	<types>
 		<members>Case.Is_delegated__c</members>
-		<members>Case.Orginal_Owner_Id__c</members>
+		<members>Case.Original_Owner__c</members>
 		<name>CustomField</name>
 	</types>
 	<types>
@@ -18,10 +18,6 @@
 		<members>Leave_Portal</members>
 		<members>Leave__c</members>
 		<name>CustomTab</name>
-	</types>
-	<types>
-		<members>Update_Status_Schedule_path_flow</members>
-		<name>Flow</name>
 	</types>
 	<types>
 		<members>Leave_Object_access</members>

@@ -1,10 +1,5 @@
 
-trigger CaseTrigger on Case(before update,after insert,after update){
-    if(Trigger.isBefore){
-        // if(Trigger.isUpdate){
-        //     CaseTriggerHandler.trackPreviousOwner(Trigger.new,Trigger.oldMap);
-        // }
-    }
+trigger CaseTrigger on Case(after insert,after update){
     if(Trigger.isAfter){
         if(Trigger.isInsert){
             CaseTriggerHandler.reassignCasesForUsersOnLeave(Trigger.new);

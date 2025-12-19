@@ -69,27 +69,6 @@ public with sharing class LeaveTriggerHandler{
         Date today=Date.today();
         return(leave.Start_Date__c <= today&&leave.End_Date__c >= today);
     }
-    /****************************************************************************************************************************
-*@Author:         CRM Team Innovation
-*@methodName:     sendEmail
-*@param:        toAddress - Recipient email address
-*@param:        subject - Email subject
-*@param:        body - Email body content
-*@Description:    Helper method to send email notifications
-    *****************************************************************************************************************************/
-    private static void sendEmail(String toAddress,String subject,String body){
-        if(String.isBlank(toAddress)||String.isBlank(subject)||String.isBlank(body)){
-            return;
-        }
-        Messaging.SingleEmailMessage email=new Messaging.SingleEmailMessage();
-        email.setToAddresses(new List<String>{ toAddress });
-        email.setSubject(subject);
-        email.setPlainTextBody(body);
-        try{
-            Messaging.sendEmail(new List<Messaging.SingleEmailMessage>{ email },false);
-        } catch(Exception ex){
-        }
-    }
     /********************************************************************************************************************
 *@Author:        CRM Team Innovation
 *@methodName:    handleBeforeInsertUpdate
@@ -285,36 +264,19 @@ public with sharing class LeaveTriggerHandler{
     *@Description:     Handle case reassignment when active leave is deleted
      **********************************************************************************************************************/
     public static void handleAfterDelete(List<Leave__c> oldLeaves) {
-        if (oldLeaves == null || oldLeaves.isEmpty()) return;
-        List<Leave__c> dummyNewLeaves = new List<Leave__c>();
-        Map<Id, Leave__c> oldMap = new Map<Id, Leave__c>();
-        for (Leave__c lv : oldLeaves) {
-            if (isEffectivelyActive(lv)) {
-                Leave__c dummyNew = lv.clone(true);
-                dummyNew.Status__c = 'Rejected';
-                dummyNewLeaves.add(dummyNew);
-                oldMap.put(lv.Id, lv);
-            }
-        }
-        List<Case> casesToUpdate = new List<Case>();
-        Map<Id, List<Case>> emailsForReturnees = new Map<Id, List<Case>>();
-        Map<Id, List<Case>> emailsForStoppedDelegates = new Map<Id, List<Case>>();
-        Map<Id, List<Case>> emailsForDelegates = new Map<Id, List<Case>>();
-        CaseReassignment.processInactivations(oldLeaves, casesToUpdate, emailsForReturnees, emailsForStoppedDelegates, emailsForDelegates);
+        Database.executeBatch(new DailyLeaveReassignmentBatch(), 200);
     }
 /*******************************************************************************************************************************
  * @Author:          CRM Team Innovation
  * @methodName:      handleAfterUpdate
  * @param:           newLeaves - List of Leave__c (Trigger.new)
  * @param:           oldMap    - Map<Id,Leave__c> (Trigger.oldMap)
- * @Description:     if the leave is of today, then Immediately calls the processActivations.
+ * @Description:     if the leave is of today, then Immediately calls the batch.
  *********************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves){
-        List<Case> casesToUpdate = new List<Case>();
-        Map<Id, List<Case>> emailsForDelegates = new Map<Id, List<Case>>();
         for(Leave__c leave:newLeaves){
             if(leave.Status__c=='Approved'&&leave.Start_Date__c==Date.today()){
-                CaseReassignment.processActivations(newLeaves, casesToUpdate, emailsForDelegates);
+                Database.executeBatch(new DailyLeaveReassignmentBatch(), 200);
             }
         }
     }
