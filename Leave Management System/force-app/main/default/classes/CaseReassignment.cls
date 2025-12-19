@@ -21,7 +21,7 @@ public without sharing class CaseReassignment{
                                 Name='Case Queue' 
                             AND 
                                 Type='Queue' LIMIT 1].Id;
-        }
+        } 
         return caseQueueId;
     }
     /************************************************************************************************************************
@@ -114,7 +114,7 @@ public without sharing class CaseReassignment{
         Id queueId=getCaseQueueId();
         List<Case> casesToProcess=[
             SELECT 
-                Id,OwnerId,Orginal_Owner_Id__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type 
+                Id,OwnerId,Original_Owner__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type 
             FROM 
                 Case 
             WHERE 
@@ -130,8 +130,8 @@ public without sharing class CaseReassignment{
                 c.OwnerId=targetOwnerId;
                 // If target is not the original owner,it is delegated
                 c.Is_delegated__c=true; 
-                if(c.Orginal_Owner_Id__c==null){
-                    c.Orginal_Owner_Id__c=currentOwnerId;
+                if(c.Original_Owner__c==null){
+                    c.Original_Owner__c=currentOwnerId;
                 }
                 casesToUpdate.add(c);
                 if(c.Is_delegated__c&&String.valueOf(targetOwnerId.getSObjectType())=='User'){
@@ -143,7 +143,6 @@ public without sharing class CaseReassignment{
             }
         }
     }
-
     /************************************************************************************************************************
      * @Author:      CRM Team Innovation
      * @methodName:  calculateTargetOwner
@@ -178,6 +177,10 @@ public without sharing class CaseReassignment{
         return queueId;
     }
     /************************************************************************************************************************
+     * @Author:      CRM Team Innovation
+     * @methodName:  getChainOfCommandUsers
+     * @param1:      Set<Id> startUserIds
+     * @param2:      Map<Id,User> allUsersMap  
     *@Description: Helper to trace the delegation chain and return a Set of all involved User Ids.
     *              Used to filter the Leave__c query.
     **************************************************************************************************************************/ 
@@ -246,11 +249,11 @@ public without sharing class CaseReassignment{
         // 4. Query Cases for ALL impacted original owners
         List<Case> casesToReturn=[
             SELECT 
-                Id,OwnerId,Orginal_Owner_Id__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type 
+                Id,OwnerId,Original_Owner__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type 
             FROM 
                 Case 
             WHERE 
-                Orginal_Owner_Id__c 
+                Original_Owner__c 
             IN 
                 :impactedOriginalOwners 
             AND 
@@ -260,7 +263,7 @@ public without sharing class CaseReassignment{
         ];
         // 5. Re-evaluate Chain of Command for each case
         for(Case c:casesToReturn){
-            Id originalOwnerId=c.Orginal_Owner_Id__c;
+            Id originalOwnerId=c.Original_Owner__c;
             Id currentOwnerId=c.OwnerId;
             // Recalculate who should own this case NOW
             Id targetOwnerId=calculateTargetOwner(originalOwnerId,allUsersMap,usersOnLeaveStatus,queueId);

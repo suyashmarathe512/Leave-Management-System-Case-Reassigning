@@ -204,13 +204,13 @@ public with sharing class LeaveTriggerHandler{
                         Decimal earnedTotal=balance.Earned_Leave__c;
                         Decimal sickTotal=balance.Sick_Leave__c;
                         if(leave.Leave_Type__c=='Earned_Leave'){
-                            Decimal availableBalance=earnedTotal - bookedEarned;
+                            Decimal availableBalance=earnedTotal-bookedEarned;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
                                 leave.addError('Please apply for Unpaid Leave because insufficient Earned Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
                             }
                         } else if(leave.Leave_Type__c=='Sick_Leave'){
-                            Decimal availableBalance=sickTotal - bookedSick;
+                            Decimal availableBalance=sickTotal-bookedSick;
                             if(availableBalance < 0) availableBalance=0;
                             if(numberOfDays > availableBalance){
                                 leave.addError('Please apply for Unpaid Leave because insufficient Sick Leave balance. Available: ' + availableBalance + ' day(s). Requested: ' + numberOfDays + ' day(s).');
@@ -263,14 +263,14 @@ public with sharing class LeaveTriggerHandler{
     *@param:         oldLeaves-List of Leave__c records after delete
     *@Description:     Handle case reassignment when active leave is deleted
      **********************************************************************************************************************/
-    public static void handleAfterDelete(List<Leave__c> oldLeaves) {
+    public static void handleAfterDelete(List<Leave__c> oldLeaves){
         Database.executeBatch(new DailyLeaveReassignmentBatch(), 200);
     }
 /*******************************************************************************************************************************
  * @Author:          CRM Team Innovation
  * @methodName:      handleAfterUpdate
- * @param:           newLeaves - List of Leave__c (Trigger.new)
- * @param:           oldMap    - Map<Id,Leave__c> (Trigger.oldMap)
+ * @param:           newLeaves-List of Leave__c (Trigger.new)
+ * @param:           oldMap   -Map<Id,Leave__c> (Trigger.oldMap)
  * @Description:     if the leave is of today, then Immediately calls the batch.
  *********************************************************************************************************************/
     public static void handleAfterUpdate(List<Leave__c> newLeaves){

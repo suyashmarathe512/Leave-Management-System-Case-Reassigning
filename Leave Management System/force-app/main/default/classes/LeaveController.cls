@@ -29,8 +29,8 @@ public with sharing class LeaveController{
         String uid=UserInfo.getUserId();
         cs=Leave_Balance__c.getInstance(uid);
         LeaveBalanceDTO dto=new LeaveBalanceDTO();
-        dto.earned=(cs!=null && cs.Earned_Leave__c!=null)?cs.Earned_Leave__c:0;
-        dto.sick  =(cs!=null && cs.Sick_Leave__c  !=null)?cs.Sick_Leave__c  :0;        
+        dto.earned=(cs!=null&&cs.Earned_Leave__c!=null)?cs.Earned_Leave__c:0;
+        dto.sick  =(cs!=null&&cs.Sick_Leave__c  !=null)?cs.Sick_Leave__c  :0;        
         List<Leave__c> userLeaves=[
             SELECT 
                 Leave_Type__c,Days_Taken__c
@@ -43,13 +43,13 @@ public with sharing class LeaveController{
         dto.bookedSick=0;
         dto.bookedUnpaid=0;
         for(Leave__c leave:userLeaves){
-            if(leave.Leave_Type__c=='Earned_Leave' && leave.Days_Taken__c!=null){
+            if(leave.Leave_Type__c=='Earned_Leave'&&leave.Days_Taken__c!=null){
                 dto.bookedEarned+=leave.Days_Taken__c;
             }
-            if(leave.Leave_Type__c=='Sick_Leave' && leave.Days_Taken__c!=null){
+            if(leave.Leave_Type__c=='Sick_Leave'&&leave.Days_Taken__c!=null){
                 dto.bookedSick+=leave.Days_Taken__c;
             }
-            if(leave.Leave_Type__c=='Unpaid_Leave' && leave.Days_Taken__c!=null){
+            if(leave.Leave_Type__c=='Unpaid_Leave'&&leave.Days_Taken__c!=null){
                 dto.bookedUnpaid+=leave.Days_Taken__c;
             }
         }
@@ -65,13 +65,13 @@ public with sharing class LeaveController{
     @AuraEnabled(cacheable=true)
     public static List<Leave__c> getMyLeaves(){
         return [
-            SELECT 
+            SELECT
                 Id,Name,Start_Date__c,End_Date__c,Leave_Type__c,Status__c,Reason_To_Leave__c,Days_Taken__c
-            FROM 
+            FROM
                 Leave__c
-            WHERE 
+            WHERE
                 OwnerId=:UserInfo.getUserId()
-            ORDER BY 
+            ORDER BY
                 Start_Date__c DESC,
                 CreatedDate DESC
         ];
@@ -93,5 +93,4 @@ public with sharing class LeaveController{
                       'LIMIT '+String.valueOf(lim);
         return Database.query(soql);
     }
-
 }

@@ -18,10 +18,11 @@ public with sharing class LeaveControllerTest{
     }
     @IsTest
     static void test_getLeaveBalances_userSpecific(){
-        Profile p=[SELECT Id 
-                        FROM 
-                    Profile 
-                    WHERE 
+        Profile p=[SELECT
+                        Id 
+                    FROM
+                        Profile 
+                    WHERE
                         Name='Standard User' 
                     LIMIT 1];
         User u=new User(
@@ -85,11 +86,11 @@ public with sharing class LeaveControllerTest{
     }
     @IsTest
     static void test_getMyLeaves_filtersByOwner(){
-        Profile p=[SELECT 
+        Profile p=[SELECT
                         Id 
-                    FROM 
+                    FROM
                         Profile 
-                    WHERE 
+                    WHERE
                         Name='Standard User' 
                     LIMIT 1];
         User u=new User(
