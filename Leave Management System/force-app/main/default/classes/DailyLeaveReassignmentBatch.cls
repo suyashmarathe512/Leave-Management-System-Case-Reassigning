@@ -25,7 +25,7 @@ public with sharing class DailyLeaveReassignmentBatch implements Database.Batcha
         List<Leave__c> activated=new List<Leave__c>();
         List<Leave__c> inactivated=new List<Leave__c>();
         for(Leave__c leave:scope){
-            if(leave.Start_Date__c<=today&&leave.End_Date__c>today){
+            if(leave.Start_Date__c<=today&&leave.End_Date__c>=today){
                 activated.add(leave);
             }else{
                 inactivated.add(leave);
