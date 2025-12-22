@@ -228,6 +228,7 @@ public without sharing class CaseReassignment{
         Set<Id> impactedOriginalOwners=new Set<Id>();
         impactedOriginalOwners.addAll(returneeIds); // The returnees themselves
         // Traverse UP the chain(BFS) to find everyone who eventually delegates to a returnee
+        // Ye loop check karta hai ki agar koi wapas aaya, toh uske upar waale logon ke cases pe kya asar padega.
         List<Id> queue=new List<Id>(returneeIds);
         Set<Id> visited=new Set<Id>(returneeIds);
         while(!queue.isEmpty()){
@@ -247,6 +248,7 @@ public without sharing class CaseReassignment{
         Map<Id,Boolean> usersOnLeaveStatus=getUsersOnLeave(involvedUsers);
         Id queueId=getCaseQueueId();
         // 4. Query Cases for ALL impacted original owners
+        // Wo saare cases uthao jo delegated hain ya queue mein pade hain, taaki unhe sahi owner ke paas bhej sakein.
         List<Case> casesToReturn=[
             SELECT 
                 Id,OwnerId,Original_Owner__c,Is_delegated__c,CaseNumber,Subject,Status,Priority,Type 
@@ -262,6 +264,7 @@ public without sharing class CaseReassignment{
                 IsClosed=false
         ];
         // 5. Re-evaluate Chain of Command for each case
+        // Har case ko check karte hain ki ab uska asli maalik kaun hona chahiye, kyunki log wapas aa gaye hain.
         for(Case c:casesToReturn){
             Id originalOwnerId=c.Original_Owner__c;
             Id currentOwnerId=c.OwnerId;
@@ -271,6 +274,7 @@ public without sharing class CaseReassignment{
             if(targetOwnerId!=currentOwnerId){
                 c.OwnerId=targetOwnerId;
                 if(targetOwnerId==queueId){
+                    // Agar case Queue mein ja raha hai, toh use delegated mat maano, bas simple queue assignment hai.
                     c.Is_delegated__c=false;
                 }else{
                     c.Is_delegated__c=(targetOwnerId!=originalOwnerId);
