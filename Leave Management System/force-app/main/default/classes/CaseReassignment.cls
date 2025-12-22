@@ -129,7 +129,7 @@ public without sharing class CaseReassignment{
             if(targetOwnerId!=currentOwnerId){
                 c.OwnerId=targetOwnerId;
                 // If target is not the original owner,it is delegated
-                c.Is_delegated__c=true; 
+                c.Is_delegated__c=(targetOwnerId!=queueId); 
                 if(c.Original_Owner__c==null){
                     c.Original_Owner__c=currentOwnerId;
                 }
@@ -257,7 +257,7 @@ public without sharing class CaseReassignment{
             IN 
                 :impactedOriginalOwners 
             AND 
-                Is_delegated__c=true 
+                (Is_delegated__c=true OR OwnerId=:queueId) 
             AND 
                 IsClosed=false
         ];
@@ -270,7 +270,11 @@ public without sharing class CaseReassignment{
             // If the calculated owner is different from the current owner,update it
             if(targetOwnerId!=currentOwnerId){
                 c.OwnerId=targetOwnerId;
-                c.Is_delegated__c=(targetOwnerId!=originalOwnerId);
+                if(targetOwnerId==queueId){
+                    c.Is_delegated__c=false;
+                }else{
+                    c.Is_delegated__c=(targetOwnerId!=originalOwnerId);
+                }
                 casesToUpdate.add(c);
                 // Notification Logic
                 if(targetOwnerId==originalOwnerId){
